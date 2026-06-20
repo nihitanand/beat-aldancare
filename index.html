@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🩺 Aldan Beat Tracker — Alderma</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+</head>
+<body class="bg-gray-50">
+<div id="root"></div>
+<script type="text/babel">
+
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyBJcohYrAYOMn-C_qdbPXMwOeMyGy8Sw1M",
+  authDomain:        "fintech-nd.firebaseapp.com",
+  databaseURL:       "https://fintech-nd-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:         "fintech-nd",
+  storageBucket:     "fintech-nd.firebasestorage.app",
+  messagingSenderId: "577595905463",
+  appId:             "1:577595905463:web:69beb0a824b0d972560432"
+};
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const DB = firebase.database();
+const DB_PATH = "alderma/v1";
+const ADMIN_PASS = "aldan2026";
+
+const { useState, useEffect, useMemo } = React;
+
+/* ══════════════════════════════════
+   HELPERS
+══════════════════════════════════ */
+const toArr = (v) => {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined);
+  if (typeof v === "object") return Object.values(v).filter(x => x !== null && x !== undefined);
+  return [];
+};
+const toObj = (v) => {
+  if (v === null || v === undefined) return {};
+  if (Array.isArray(v)) {
+    const o = {};
+    v.forEach((val, i) => { if (val !== null && val !== undefined) o[i] = val; });
+    return o;
+  }
+  if (typeof v === "object") return v;
+  return {};
+};
+const uid   = () => Math.random().toString(36).slice(2,9);
+const fmt   = (n) => "Rs." + Number(n||0).toLocaleString("en-IN");
+const today = () => new Date().toISOString().split("T")[0];
+const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const daysInMonth = (mk) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m, 0).getDate(); };
+const weekdayOf   = (mk, d) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m-1, d).getDay(); };
+const monthLabel  = (mk) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m-1, 1).toLocaleDateString("en-IN",{month:"long",year:"numeric"}); };
+const PRIORITIES = ["High","Medium","Low"];
+const PRI_COLOR = {High:"bg-red-100 text-red-700",Medium:"bg-amber-100 text-amber-700",Low:"bg-gray-100 text-gray-600"};
+
+/* ══════════════════════════════════
+   SEED DATA — Alderma Bihar Doctor Master
+   (from Doctor_Master_Report_18_06_26.xlsx, joined with Beat Plan Jul26 sheet order)
+══════════════════════════════════ */
+const SEED_DOCTORS = [{"id":1,"mdl":242,"name":"CP Singh Arrah","area":"ARRAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24644,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":2,"mdl":"","name":"Mobaraq Hussain Arrah","area":"ARRAH","specialty":"","qualification":"","mobile":"","hospital":"","custCode":"","visitCat":"","isNew":true,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":3,"mdl":83,"name":"R N PRASAD","area":"ARRAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24514,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":4,"mdl":81,"name":"RAJIV RANJAN","area":"ARRAH","specialty":"Dermatologist","qualification":"DVD","mobile":"9905362407","hospital":"","custCode":24512,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":5,"mdl":170,"name":"Rakesh Ranjan Rahul","area":"ARRAH","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24570,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":6,"mdl":113,"name":"SASHI RAJ TOMAR","area":"ARRAH","specialty":"GP Derma","qualification":"DVD","mobile":"","hospital":"","custCode":24527,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":7,"mdl":172,"name":"Satendra Kumar","area":"ARRAH","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24572,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":8,"mdl":129,"name":"Hare Ram Kumar Bgs","area":"BEGUSARAI","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24534,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":9,"mdl":128,"name":"Pankaj Agarwal Bgs","area":"BEGUSARAI","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24533,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":10,"mdl":25,"name":"AMIT KUMAR RAMNAGAR","area":"BETTIAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24469,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":11,"mdl":26,"name":"ARUN KR TIWARI BET","area":"BETTIAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24470,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":12,"mdl":45,"name":"Garima Gitanjali","area":"BETTIAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24487,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":13,"mdl":47,"name":"Mugda Mohan","area":"BETTIAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24489,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":14,"mdl":48,"name":"Santosh Singh","area":"BETTIAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24490,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":15,"mdl":40,"name":"SHIV SHANKAR SHARMA BET","area":"BETTIAH","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24482,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":16,"mdl":241,"name":"Alok kumar Biharsharif","area":"BIHARSHARIF","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24643,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":17,"mdl":132,"name":"BIRENDAR PRASAD","area":"BIHARSHARIF","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24536,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":18,"mdl":133,"name":"RAJESH KAPOOR","area":"BIHARSHARIF","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24537,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":19,"mdl":135,"name":"SANJAY KUMAR BIHARSHARIF","area":"BIHARSHARIF","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24539,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":20,"mdl":134,"name":"SRIKANT PRASAD","area":"BIHARSHARIF","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24538,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":21,"mdl":252,"name":"Deepak Kumar Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24654,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":22,"mdl":166,"name":"Devesh Sinha","area":"GAYA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24566,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":23,"mdl":167,"name":"Divyani Sinha","area":"GAYA","specialty":"Gynaecologists","qualification":"MD","mobile":"","hospital":"","custCode":24567,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":24,"mdl":248,"name":"I Khan Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24650,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":25,"mdl":250,"name":"Mobaraq Hussain Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24652,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":26,"mdl":251,"name":"Naveen Kumar Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24653,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":27,"mdl":253,"name":"Pradeep Kumar Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24655,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":28,"mdl":168,"name":"Prem Prabhakar","area":"GAYA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24568,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":29,"mdl":249,"name":"Ramavtar Singh Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24651,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":30,"mdl":254,"name":"Rizwan Barkat Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24656,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":31,"mdl":169,"name":"Satish Kumar","area":"GAYA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24569,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":32,"mdl":255,"name":"Tawbez Alam Gaya","area":"GAYA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24657,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":33,"mdl":142,"name":"AMIT VERMA","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24542,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":34,"mdl":235,"name":"Amit Verma Hajipur","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24637,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":35,"mdl":24,"name":"Anamika Mishra","area":"HAJIPUR","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24468,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":36,"mdl":20,"name":"OP Chourasia","area":"HAJIPUR","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24464,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":37,"mdl":236,"name":"Patal Verma Hajipur","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24638,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":38,"mdl":"","name":"Puspender Sir Hajipur","area":"HAJIPUR","specialty":"","qualification":"","mobile":"","hospital":"","custCode":"","visitCat":"","isNew":true,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":39,"mdl":239,"name":"Rajeev Kumar Hajipur","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24641,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":40,"mdl":237,"name":"Ravi Kumar Hajipur","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24639,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":41,"mdl":219,"name":"Sakshi Sinha Hajipur","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24621,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":42,"mdl":238,"name":"Vijay Kumar Hajipur","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24640,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":43,"mdl":19,"name":"Shiv Kumar  SV","area":"MAHARAJGANJ","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24463,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":44,"mdl":93,"name":"AMIT KUMAR MOT","area":"MOTIHARI","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24520,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":45,"mdl":77,"name":"M ANSARI MOT","area":"MOTIHARI","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24508,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":46,"mdl":111,"name":"Sanjay Shekhar MOT","area":"MOTIHARI","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24525,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":47,"mdl":51,"name":"SUBODH KUMAR MOT","area":"MOTIHARI","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24491,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":48,"mdl":"","name":"Alladin Ansari Muz","area":"MUZAFFARPUR","specialty":"","qualification":"","mobile":"","hospital":"","custCode":"","visitCat":"","isNew":true,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":49,"mdl":213,"name":"AMIT KUMAR Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"MBBS, MD","mobile":"","hospital":"","custCode":18197,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":50,"mdl":212,"name":"ANAND KUMAR Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"MBBS, MD","mobile":"","hospital":"","custCode":18187,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":51,"mdl":214,"name":"ANURAJ ASHISH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":20917,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":52,"mdl":196,"name":"ARIF SIDDKI Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23614,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":53,"mdl":198,"name":"DR ABHILASHA SINGH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24149,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":54,"mdl":205,"name":"DR AYGANDHA SRIVASTAVA Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23681,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":55,"mdl":201,"name":"DR BADAM ANNAMUL Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23677,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":56,"mdl":203,"name":"DR DANISH AKHTAR Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23679,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":57,"mdl":194,"name":"DR JITENDAR KISHOR SINGH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23673,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":58,"mdl":189,"name":"DR K K P SINGH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23761,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":59,"mdl":187,"name":"DR KUMAR GAURAV Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24147,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":60,"mdl":209,"name":"DR N K PRASAD Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23687,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":61,"mdl":202,"name":"DR PANKAJ KRISTOFER Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23678,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":62,"mdl":206,"name":"DR R N SHARMA Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23683,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":63,"mdl":208,"name":"DR RAJESH KUMAR Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23686,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":64,"mdl":211,"name":"DR SAHID HASAN Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23699,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":65,"mdl":191,"name":"DR SHAHSIKALA Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24148,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":66,"mdl":199,"name":"DR SITARAM SINGH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23675,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":67,"mdl":204,"name":"DR SUBEKHA SAH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23680,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":68,"mdl":207,"name":"DR SUBHASH SUMAN Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23685,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":69,"mdl":200,"name":"G HAKKANI Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":16515,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":70,"mdl":193,"name":"GYANITA Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":16506,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":71,"mdl":197,"name":"Madan Mohan Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":18640,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":72,"mdl":"","name":"Mazhar Imam Muz","area":"MUZAFFARPUR","specialty":"","qualification":"","mobile":"","hospital":"","custCode":"","visitCat":"","isNew":true,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":73,"mdl":188,"name":"PRIYANKA SINGH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":16499,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":74,"mdl":186,"name":"PUSPENDRA KUMAR LEPROSY Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":16496,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":75,"mdl":190,"name":"R K SINGH Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23611,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":76,"mdl":195,"name":"R N SHARMA Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":23613,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":77,"mdl":192,"name":"SIMA KUMARI Muz","area":"MUZAFFARPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":16505,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":78,"mdl":33,"name":"ABHIJEET KR JHA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24477,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":79,"mdl":43,"name":"Abhinav Kumar","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24485,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":80,"mdl":161,"name":"Abhishek Kumar Sinha","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24561,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":81,"mdl":54,"name":"AJISNU PRAKASH","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24492,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":82,"mdl":119,"name":"Ajit Kumar Pg","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24530,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":83,"mdl":228,"name":"Amit kumar","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24630,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":84,"mdl":229,"name":"Amit Ranjan","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24631,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":85,"mdl":230,"name":"Amit Verma","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24632,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":86,"mdl":140,"name":"ANKITA KUMARI  Nmch","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24541,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":87,"mdl":138,"name":"ANSU KUMAR  Nmch","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24540,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":88,"mdl":155,"name":"Anupama Sinha","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24555,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":89,"mdl":156,"name":"Archana Lokhande","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24556,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":90,"mdl":116,"name":"BABLI KUMARI","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24529,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":91,"mdl":220,"name":"Binay Prasad","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24622,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":92,"mdl":12,"name":"C B MISHRA","area":"PATNA","specialty":"General Physician","qualification":"BAMS","mobile":"","hospital":"","custCode":24456,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":93,"mdl":225,"name":"Deepika Rachna","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24627,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":94,"mdl":3,"name":"DHIRAJ KUMAR","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24447,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":95,"mdl":243,"name":"Divya PMCH","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24645,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":96,"mdl":75,"name":"DR MEHTAB","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24506,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":97,"mdl":210,"name":"DR RRK RAHUL Muz","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24150,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":98,"mdl":15,"name":"DR SUSMITA SHARMA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24459,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":99,"mdl":2,"name":"FAKRULHAQUE","area":"PATNA","specialty":"GP Derma","qualification":"BAMS","mobile":"","hospital":"","custCode":24446,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":100,"mdl":221,"name":"Farheel Jamal Binay Pd","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24623,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":101,"mdl":234,"name":"Gaurav Das AIIMS","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24636,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":102,"mdl":232,"name":"Gaurav Kumar","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24634,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":103,"mdl":165,"name":"Gopal Prasad","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24565,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":104,"mdl":256,"name":"Indu Kumari","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24662,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":105,"mdl":233,"name":"Irene Mathwes AIIMS","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24635,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":106,"mdl":31,"name":"JYOTI CHORASIYA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"9334046033","hospital":"","custCode":24475,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":107,"mdl":244,"name":"KC Jaykar IGIMS","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24646,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":108,"mdl":68,"name":"KN TIWARI","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24501,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":109,"mdl":260,"name":"Kumar Satya Prakash","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24666,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":110,"mdl":257,"name":"Mahtab Alam Medimart","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24663,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":111,"mdl":152,"name":"Major Smita","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24552,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":112,"mdl":217,"name":"Md. Zeeshan","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24619,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":113,"mdl":159,"name":"MK Sinha","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24559,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":114,"mdl":150,"name":"Mubarak Hussain","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24550,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":115,"mdl":10,"name":"NEERAJ KUMAR PATNA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24454,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":116,"mdl":56,"name":"OM KAR DEV","area":"PATNA","specialty":"Plastic Surgeon","qualification":"DVD","mobile":"","hospital":"","custCode":24493,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":117,"mdl":144,"name":"P S Singh","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24544,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":118,"mdl":27,"name":"PALLAVI KASHYAP","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24471,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":119,"mdl":146,"name":"Pankaj Tiwari","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24546,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":120,"mdl":148,"name":"PK Roy","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24548,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":121,"mdl":82,"name":"PRASANT KUMAR","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24513,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":122,"mdl":76,"name":"PRASUN KR PATNA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24507,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":123,"mdl":46,"name":"PRIYADARSI RANJAN","area":"PATNA","specialty":"Plastic Surgeon","qualification":"DVD","mobile":"","hospital":"","custCode":24488,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":124,"mdl":69,"name":"PUJA NUPUR","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24502,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":125,"mdl":162,"name":"Pushpendra Kumar","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24562,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":126,"mdl":5,"name":"PUSPENDRA KUMAR PATNA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24449,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":127,"mdl":99,"name":"Rahul Kumar Pg","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24523,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":128,"mdl":218,"name":"Rajeev Kumar Patna-Hajipur","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24620,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":129,"mdl":4,"name":"RAJESH SINHA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24448,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":130,"mdl":1,"name":"Rajiv Kumar NMCH","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24445,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":131,"mdl":163,"name":"Rakhi Gupta AIIMS","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24563,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":132,"mdl":149,"name":"Ramawatar Singh","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24549,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":133,"mdl":258,"name":"Rashid","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24664,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":134,"mdl":160,"name":"Rashmi Sinha","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24560,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":135,"mdl":222,"name":"Ravi Vikram Singh","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24624,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":136,"mdl":226,"name":"Richa thakur","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24628,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":137,"mdl":30,"name":"S K TRIPATHI","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24474,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":138,"mdl":16,"name":"Sakshi kumari","area":"PATNA","specialty":"GP Derma","qualification":"BAMS","mobile":"","hospital":"","custCode":24460,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":139,"mdl":89,"name":"SATISH CHANDRA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24517,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":140,"mdl":79,"name":"Setubandhu Tiwari","area":"PATNA","specialty":"Plastic Surgeon","qualification":"DVD","mobile":"","hospital":"","custCode":24510,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":141,"mdl":7,"name":"SHASHANK SEKHER","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"9471000012","hospital":"","custCode":24451,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":142,"mdl":78,"name":"SHASHIKANT CHOUDHARY","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24509,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":143,"mdl":231,"name":"Shikha Anand","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24633,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":144,"mdl":44,"name":"Shivani shekhar Nmch","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24486,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":145,"mdl":73,"name":"Shobhna jha","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24505,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":146,"mdl":153,"name":"Shri Rupa","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24553,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":147,"mdl":72,"name":"SHRIKANT K CHODHARY","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24504,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":148,"mdl":112,"name":"Shubhara dutta Pg","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24526,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":149,"mdl":247,"name":"Smita Prasad PMCH","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24649,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":150,"mdl":90,"name":"SREEPARNA DEB","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24518,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":151,"mdl":59,"name":"Sri Rupa","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24496,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":152,"mdl":158,"name":"SS Iqbal Hussain","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24558,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":153,"mdl":11,"name":"SUDHANSHU SINGH","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"9431033011","hospital":"","custCode":24455,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":154,"mdl":259,"name":"Suvesh Singh","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24665,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":155,"mdl":224,"name":"Swati Rani Singh","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24626,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":156,"mdl":8,"name":"Swati Surubh","area":"PATNA","specialty":"GP Derma","qualification":"BAMS","mobile":"","hospital":"","custCode":24452,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":157,"mdl":164,"name":"Swetalina Pradhan AIIMS","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24564,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":158,"mdl":80,"name":"TALAT FATIMA","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24511,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":159,"mdl":154,"name":"Uday Kumar Udyan","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24554,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":160,"mdl":245,"name":"UK Pallavi IGIMS","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24647,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":161,"mdl":147,"name":"Vanshika Ray","area":"PATNA","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24547,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":162,"mdl":246,"name":"Varsha IGIMS","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24648,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":163,"mdl":14,"name":"Vinod Kumar Sinha","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24458,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":164,"mdl":185,"name":"Bhavesh Rajak Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24071,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":165,"mdl":174,"name":"D THAKUR Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":19707,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":166,"mdl":184,"name":"Deepak Kumar Patel Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":19804,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":167,"mdl":182,"name":"K K SAH Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":22217,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":168,"mdl":175,"name":"K N SINGH Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":19713,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":169,"mdl":179,"name":"M BASIRUDDIN Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":20909,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":170,"mdl":176,"name":"NEHA KR AGRAWAL Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":19714,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":171,"mdl":177,"name":"P C DAS PURNEA","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":19716,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":172,"mdl":178,"name":"PALLAVI KUMARI PURNEA","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":20241,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":173,"mdl":183,"name":"PRERNA JHA Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":20240,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":174,"mdl":180,"name":"PRITI PRAKHAR Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":22228,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":175,"mdl":181,"name":"SMRITI JHA Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":22229,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":176,"mdl":173,"name":"SUSHILA Purnea","area":"PURNEA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":22214,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":177,"mdl":122,"name":"Asif Hussein  SV","area":"SIWAN","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24531,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":178,"mdl":58,"name":"Manzoor Alam  SV","area":"SIWAN","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24495,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":179,"mdl":98,"name":"MD Israel  SV","area":"SIWAN","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24522,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":180,"mdl":91,"name":"MD Rabiud Din SV","area":"SIWAN","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24519,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":181,"mdl":123,"name":"MD Zahid  SV","area":"SIWAN","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24532,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":182,"mdl":22,"name":"Sahmsher Sulemani  SV","area":"SIWAN","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24466,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":183,"mdl":108,"name":"Vinay Kr Sharma  SV","area":"SIWAN","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24524,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":184,"mdl":21,"name":"Vijay Kumar","area":"HAJIPUR","specialty":"Dermatologist","qualification":"MD","mobile":"","hospital":"","custCode":24465,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":185,"mdl":23,"name":"S Chand","area":"HAJIPUR","specialty":"GP Derma","qualification":"BAMS","mobile":"","hospital":"","custCode":24467,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":186,"mdl":42,"name":"RASHMI","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"9431458053","hospital":"","custCode":24484,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":187,"mdl":71,"name":"RAMAWTAR SINHG","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24503,"visitCat":"ALD SUPER CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":188,"mdl":223,"name":"Prashant kumar","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24625,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":189,"mdl":227,"name":"Niraj kumar","area":"PATNA","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24629,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":190,"mdl":240,"name":"RN Prasad Hajipur","area":"HAJIPUR","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24642,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0},{"id":191,"mdl":261,"name":"SHASHIKANT PRASAD BIHARSHARIF","area":"BIHARSHARIF","specialty":"Dermatologist","qualification":"DVD","mobile":"","hospital":"","custCode":24667,"visitCat":"ALD CORE","isNew":false,"priority":"Medium","crmYN":"No","crmAmt":0}];
+
+/* Best-effort transcription of July 2026 paper beat-plan tick marks
+   (from photographed sheets) — id : [planned visit days] */
+const SEED_TICKS_202607 = {"1": [1, 2, 3], "33": [8, 15, 22, 29], "34": [8, 15, 22, 29], "35": [8, 15, 22, 29], "36": [8, 15, 22, 29], "37": [8, 15, 22, 29], "39": [8, 15, 22, 29], "40": [8, 15, 22], "41": [8, 15], "42": [8, 15, 22, 29], "49": [29], "50": [27, 28, 29], "51": [27, 28], "60": [22], "61": [19], "62": [22, 23], "63": [22, 23], "64": [19], "66": [16, 17], "67": [9, 10, 11], "68": [9, 10, 11], "70": [9, 10], "71": [1, 9], "74": [6, 7], "75": [7], "156": [3, 9, 10, 16, 17, 23, 24], "157": [6, 7, 13, 20, 21, 27], "158": [1], "159": [2, 3, 6, 7, 13, 20, 21, 27], "160": [2, 3, 9, 16, 23, 29], "161": [2, 3, 8, 9, 16, 22, 23, 29], "163": [1]};
+
+const buildSeedTourplan = () => {
+  const tp = {};
+  Object.keys(SEED_TICKS_202607).forEach(id => {
+    tp[id] = {};
+    SEED_TICKS_202607[id].forEach(d => { tp[id][String(d)] = true; });
+  });
+  return tp;
+};
+
+const SEED_BIZFIELDS = [
+  {key:"tentativeBiz", label:"Tentative Business (Rs.)", type:"number"},
+  {key:"focusProduct",  label:"Focus Product", type:"text"},
+  {key:"remarks",       label:"Remarks", type:"text"},
+];
+
+const SEED_DATA = () => ({
+  doctors: SEED_DOCTORS,
+  tourplan: { "2026-07": buildSeedTourplan() },
+  actual: {},
+  bizplan: {},
+  bizFieldDefs: SEED_BIZFIELDS,
+  crmplan: {},
+});
+
+/* ══════════════════════════════════
+   SHARED UI
+══════════════════════════════════ */
+const INP = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white";
+
+function Fld({label, children}) {
+  return <div><label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5">{label}</label>{children}</div>;
+}
+
+function Modal({open,onClose,title,children,wide,noPad}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{background:"rgba(15,23,42,0.65)"}}>
+      <div className={`bg-white rounded-2xl shadow-2xl w-full my-6 ${wide?"max-w-2xl":"max-w-md"}`}>
+        <div className="flex justify-between items-center px-6 pt-5 pb-4 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">{title}</h2>
+          <button onClick={onClose} className="text-gray-300 hover:text-gray-700 text-xl font-bold">✕</button>
+        </div>
+        <div className={noPad?"":"px-6 py-5"}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Confirm({open,msg,onOk,onCancel}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{background:"rgba(15,23,42,0.65)"}}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div className="text-3xl text-center mb-3">⚠️</div>
+        <p className="text-center text-gray-700 font-semibold mb-5">{msg}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-200">Cancel</button>
+          <button onClick={onOk} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthPicker({value,onChange}) {
+  return <input type="month" value={value} onChange={e=>onChange(e.target.value)}
+    className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-bold text-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"/>;
+}
+
+function PriBadge({p}) {
+  return <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${PRI_COLOR[p]||PRI_COLOR.Medium}`}>{p||"Medium"}</span>;
+}
+
+/* ══════════════════════════════════
+   TAB: DOCTOR MASTER
+══════════════════════════════════ */
+const BLANK_DOC = () => ({name:"",mdl:"",area:"",specialty:"",qualification:"",mobile:"",hospital:"",priority:"Medium",crmYN:"No",crmAmt:0});
+
+function DoctorMasterTab({doctors, isAdmin, onSave, notify, ask}) {
+  const [search, setSearch] = useState("");
+  const [areaF, setAreaF]   = useState("All");
+  const [modal, setModal]   = useState(false);
+  const [form, setForm]     = useState(BLANK_DOC());
+  const [editId, setEditId] = useState(null);
+
+  const areas = useMemo(() => ["All", ...Array.from(new Set(doctors.map(d=>d.area).filter(Boolean)))], [doctors]);
+
+  const filtered = doctors.filter(d =>
+    (areaF==="All" || d.area===areaF) &&
+    (d.name.toLowerCase().includes(search.toLowerCase()) || String(d.mdl||"").includes(search))
+  );
+
+  const openAdd  = () => { setForm(BLANK_DOC()); setEditId(null); setModal(true); };
+  const openEdit = (d) => { setForm({...d}); setEditId(d.id); setModal(true); };
+
+  const save = () => {
+    if (!form.name.trim()) return;
+    if (editId) {
+      onSave(doctors.map(d => d.id===editId ? {...d, ...form, crmAmt:Number(form.crmAmt)||0} : d));
+      notify("Doctor updated!");
+    } else {
+      const maxId = doctors.length ? Math.max(...doctors.map(d=>d.id||0)) : 0;
+      onSave([...doctors, {...form, id:maxId+1, crmAmt:Number(form.crmAmt)||0, isNew:true}]);
+      notify("Doctor added!");
+    }
+    setModal(false);
+  };
+
+  const del = (d) => ask(`Remove "${d.name}" from master?`, () => {
+    onSave(doctors.filter(x=>x.id!==d.id));
+    notify("Removed","red");
+  });
+
+  return (
+    <div>
+      <div className="flex flex-col md:flex-row gap-3 mb-4">
+        <input placeholder="Search name or MDL…" value={search} onChange={e=>setSearch(e.target.value)} className={INP}/>
+        <select value={areaF} onChange={e=>setAreaF(e.target.value)} className={INP + " md:w-48"}>
+          {areas.map(a=><option key={a}>{a}</option>)}
+        </select>
+        {isAdmin && <button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap">+ Add Doctor</button>}
+      </div>
+      <p className="text-xs text-gray-400 mb-3">{filtered.length} of {doctors.length} doctors</p>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>{["MDL","Name","Area","Specialty","Priority","CRM","CRM Amt","Mobile",""].map(h=>(
+                <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map(d=>(
+                <tr key={d.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2.5 text-xs text-gray-400">{d.mdl||"—"}</td>
+                  <td className="px-3 py-2.5 font-semibold text-gray-800">{d.name}</td>
+                  <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{d.area}</span></td>
+                  <td className="px-3 py-2.5 text-xs text-gray-500">{d.specialty||"—"}</td>
+                  <td className="px-3 py-2.5"><PriBadge p={d.priority}/></td>
+                  <td className="px-3 py-2.5">{d.crmYN==="Yes" ? <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Yes</span> : <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">No</span>}</td>
+                  <td className="px-3 py-2.5 text-xs font-semibold text-gray-600">{d.crmYN==="Yes" ? fmt(d.crmAmt) : "—"}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-500">{d.mobile||"—"}</td>
+                  <td className="px-3 py-2.5">
+                    <div className="flex gap-2">
+                      <button onClick={()=>openEdit(d)} className="text-teal-400 hover:text-teal-700">✏️</button>
+                      {isAdmin && <button onClick={()=>del(d)} className="text-gray-200 hover:text-red-500">🗑️</button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {filtered.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors found</div>}
+      </div>
+
+      <Modal open={modal} onClose={()=>setModal(false)} title={editId?"✏️ Edit Doctor":"➕ Add Doctor"} wide>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2"><Fld label="Doctor Name *"><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className={INP} autoFocus/></Fld></div>
+          <Fld label="MDL No"><input value={form.mdl} onChange={e=>setForm({...form,mdl:e.target.value})} className={INP}/></Fld>
+          <Fld label="Area / HQ"><input value={form.area} onChange={e=>setForm({...form,area:e.target.value.toUpperCase()})} className={INP}/></Fld>
+          <Fld label="Specialty"><input value={form.specialty} onChange={e=>setForm({...form,specialty:e.target.value})} className={INP}/></Fld>
+          <Fld label="Qualification"><input value={form.qualification} onChange={e=>setForm({...form,qualification:e.target.value})} className={INP}/></Fld>
+          <Fld label="Mobile No"><input value={form.mobile} onChange={e=>setForm({...form,mobile:e.target.value})} className={INP}/></Fld>
+          <Fld label="Hospital"><input value={form.hospital} onChange={e=>setForm({...form,hospital:e.target.value})} className={INP}/></Fld>
+          <Fld label="Priority">
+            <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})} className={INP}>
+              {PRIORITIES.map(p=><option key={p}>{p}</option>)}
+            </select>
+          </Fld>
+          <Fld label="CRM">
+            <select value={form.crmYN} onChange={e=>setForm({...form,crmYN:e.target.value})} className={INP}>
+              <option>No</option><option>Yes</option>
+            </select>
+          </Fld>
+          {form.crmYN==="Yes" && <Fld label="Tentative CRM Amt (Rs.)"><input type="number" value={form.crmAmt} onChange={e=>setForm({...form,crmAmt:e.target.value})} className={INP}/></Fld>}
+        </div>
+        <div className="flex gap-3 pt-4 mt-4 border-t border-gray-100">
+          <button onClick={()=>setModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+          <button onClick={save} disabled={!form.name.trim()} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 disabled:opacity-40">{editId?"Update":"Add Doctor"}</button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   TAB: TOUR PLAN (month-wise)
+══════════════════════════════════ */
+function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
+  const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
+  const [areaSel, setAreaSel] = useState(areas[0] || "");
+  useEffect(() => { if (!areas.includes(areaSel) && areas.length) setAreaSel(areas[0]); }, [areas.join(",")]);
+
+  const nDays = daysInMonth(month);
+  const days = Array.from({length:nDays}, (_,i)=>i+1);
+  const monthDocs = toObj(tourplan[month]);
+  const rows = doctors.filter(d => d.area===areaSel);
+
+  const plannedCount = (docId) => Object.values(toObj(monthDocs[docId])).filter(Boolean).length;
+
+  return (
+    <div>
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+        <MonthPicker value={month} onChange={setMonth}/>
+        <div className="flex gap-1.5 flex-wrap">
+          {areas.map(a=>(
+            <button key={a} onClick={()=>setAreaSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>{a}</button>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors in {areaSel} · tap a cell to plan a visit</p>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="text-xs border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-100">
+                <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-bold text-gray-400 uppercase whitespace-nowrap z-10 border-r border-gray-100">Doctor</th>
+                {days.map(d=>{
+                  const wd = weekdayOf(month,d);
+                  const weekend = wd===0||wd===6;
+                  return <th key={d} className={`px-1.5 py-1 text-center font-bold ${weekend?"bg-gray-200 text-gray-500":"text-gray-400"}`} style={{minWidth:"26px"}}>
+                    <div>{d}</div><div className="text-[9px] font-normal">{WD[wd]}</div>
+                  </th>;
+                })}
+                <th className="px-2 py-2 text-center font-bold text-gray-400">Tot</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map(d=>{
+                const dMap = toObj(monthDocs[d.id]);
+                return (
+                  <tr key={d.id} className="hover:bg-gray-50">
+                    <td className="sticky left-0 bg-white px-3 py-1.5 font-semibold text-gray-700 whitespace-nowrap border-r border-gray-100">
+                      {d.name}<span className="text-gray-300 font-normal"> · {d.mdl||"—"}</span>
+                    </td>
+                    {days.map(day=>{
+                      const wd = weekdayOf(month,day);
+                      const weekend = wd===0||wd===6;
+                      const checked = !!dMap[day];
+                      return (
+                        <td key={day} onClick={()=>onToggle(d.id, day)}
+                          className={`text-center cursor-pointer select-none ${weekend?"bg-gray-50":""} ${checked?"bg-teal-100":""}`}>
+                          {checked ? <span className="text-teal-600 font-bold">✓</span> : <span className="text-gray-200">·</span>}
+                        </td>
+                      );
+                    })}
+                    <td className="text-center font-bold text-teal-700">{plannedCount(d.id)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {rows.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors in this area</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   TAB: ACTUAL VISITS
+══════════════════════════════════ */
+function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleActual, mode}) {
+  const [view, setView] = useState("daily"); // daily | grid
+  const [date, setDate] = useState(() => {
+    const d = new Date();
+    const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    return mk===month ? d.getDate() : 1;
+  });
+  const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
+  const [areaSel, setAreaSel] = useState(areas[0] || "");
+  useEffect(() => { if (!areas.includes(areaSel) && areas.length) setAreaSel(areas[0]); }, [areas.join(",")]);
+
+  const nDays = daysInMonth(month);
+  const monthPlan   = toObj(tourplan[month]);
+  const monthActual = toObj(actual[month]);
+
+  /* ── Daily view: doctors planned for selected date ── */
+  const plannedToday = doctors.filter(d => !!toObj(monthPlan[d.id])[date]);
+  const visitedIds = new Set(Object.keys(monthActual).filter(id => !!toObj(monthActual[id])[date]));
+  const unplannedVisited = doctors.filter(d => visitedIds.has(String(d.id)) && !plannedToday.find(p=>p.id===d.id));
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSearch, setAddSearch] = useState("");
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button onClick={()=>setView("daily")} className={`px-4 py-2 rounded-lg text-sm font-bold ${view==="daily"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>📋 Daily</button>
+        <button onClick={()=>setView("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold ${view==="grid"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>🗓️ Monthly Grid</button>
+        <MonthPicker value={month} onChange={setMonth}/>
+      </div>
+
+      {view==="daily" && (
+        <div>
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <input type="range" min="1" max={nDays} value={date} onChange={e=>setDate(Number(e.target.value))} className="w-40"/>
+            <span className="font-black text-teal-700 text-lg">{date} {monthLabel(month)}</span>
+            <span className="text-xs text-gray-400">({WD[weekdayOf(month,date)]})</span>
+            <button onClick={()=>setAddOpen(true)} className="ml-auto bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Unplanned Visit</button>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+            <div className="px-4 py-2.5 bg-teal-50 border-b border-teal-100 text-xs font-bold text-teal-700 uppercase">Planned Today ({plannedToday.length})</div>
+            {plannedToday.length===0 && <div className="text-center py-8 text-gray-300 text-sm">No doctors planned for this date</div>}
+            <div className="divide-y divide-gray-50">
+              {plannedToday.map(d=>{
+                const done = !!toObj(monthActual[d.id])[date];
+                return (
+                  <div key={d.id} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
+                      <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"} {d.priority==="High" && <PriBadge p="High"/>}</p>
+                    </div>
+                    <button onClick={()=>onToggleActual(d.id, date)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${done?"bg-emerald-100 text-emerald-700":"bg-gray-100 text-gray-500"}`}>
+                      {done?"✓ Visited":"Mark Visited"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {unplannedVisited.length>0 && (
+            <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
+              <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 text-xs font-bold text-amber-700 uppercase">Unplanned Visits ({unplannedVisited.length})</div>
+              <div className="divide-y divide-gray-50">
+                {unplannedVisited.map(d=>(
+                  <div key={d.id} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
+                      <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"}</p>
+                    </div>
+                    <button onClick={()=>onToggleActual(d.id, date)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">✓ Visited</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="➕ Log Unplanned Visit">
+            <input placeholder="Search doctor…" value={addSearch} onChange={e=>setAddSearch(e.target.value)} className={INP + " mb-3"} autoFocus/>
+            <div className="max-h-72 overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
+              {doctors.filter(d=>d.name.toLowerCase().includes(addSearch.toLowerCase())).slice(0,40).map(d=>(
+                <button key={d.id} onClick={()=>{onToggleActual(d.id,date,true); setAddOpen(false); setAddSearch("");}}
+                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 flex justify-between items-center">
+                  <span className="text-sm font-semibold text-gray-700">{d.name}</span>
+                  <span className="text-xs text-gray-400">{d.area}</span>
+                </button>
+              ))}
+            </div>
+          </Modal>
+        </div>
+      )}
+
+      {view==="grid" && (
+        <div>
+          <div className="flex gap-1.5 flex-wrap mb-3">
+            {areas.map(a=>(
+              <button key={a} onClick={()=>setAreaSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>{a}</button>
+            ))}
+          </div>
+          <div className="flex gap-4 text-xs mb-3 text-gray-500">
+            <span><span className="inline-block w-3 h-3 bg-blue-100 border border-blue-300 align-middle mr-1"></span>Planned only</span>
+            <span><span className="inline-block w-3 h-3 bg-emerald-200 border border-emerald-400 align-middle mr-1"></span>Visited</span>
+            <span><span className="inline-block w-3 h-3 bg-amber-200 border border-amber-400 align-middle mr-1"></span>Unplanned visit</span>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-bold text-gray-400 uppercase whitespace-nowrap z-10 border-r border-gray-100">Doctor</th>
+                    {Array.from({length:nDays},(_,i)=>i+1).map(d=>(
+                      <th key={d} className="px-1.5 py-1 text-center font-bold text-gray-400" style={{minWidth:"24px"}}>{d}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {doctors.filter(d=>d.area===areaSel).map(d=>{
+                    const pMap = toObj(monthPlan[d.id]);
+                    const aMap = toObj(monthActual[d.id]);
+                    return (
+                      <tr key={d.id} className="hover:bg-gray-50">
+                        <td className="sticky left-0 bg-white px-3 py-1.5 font-semibold text-gray-700 whitespace-nowrap border-r border-gray-100">{d.name}</td>
+                        {Array.from({length:nDays},(_,i)=>i+1).map(day=>{
+                          const planned = !!pMap[day], done = !!aMap[day];
+                          let cls = "text-gray-200";
+                          if (planned && done) cls = "bg-emerald-200 text-emerald-800 font-bold";
+                          else if (planned) cls = "bg-blue-100 text-blue-600";
+                          else if (done) cls = "bg-amber-200 text-amber-800 font-bold";
+                          return <td key={day} onClick={()=>onToggleActual(d.id, day)} className={`text-center cursor-pointer select-none ${cls}`}>{planned||done?"✓":"·"}</td>;
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   TAB: BUSINESS PLAN (doctor-wise, month-wise)
+══════════════════════════════════ */
+function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSaveEntry, onAddField, isAdmin, notify}) {
+  const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
+  const [areaSel, setAreaSel] = useState("All");
+  const [search, setSearch]   = useState("");
+  const [modal, setModal]     = useState(null); // doctor id being edited
+  const [form, setForm]       = useState({});
+  const [fieldModal, setFieldModal] = useState(false);
+  const [newField, setNewField] = useState({label:"", type:"text"});
+
+  const monthData = toObj(bizplan[month]);
+
+  const filtered = doctors.filter(d =>
+    (areaSel==="All" || d.area===areaSel) &&
+    d.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const openEdit = (d) => {
+    setForm({...toObj(monthData[d.id])});
+    setModal(d.id);
+  };
+
+  const save = () => {
+    onSaveEntry(modal, form);
+    notify("Business plan updated!");
+    setModal(null);
+  };
+
+  const addField = () => {
+    if (!newField.label.trim()) return;
+    const key = "f_" + newField.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").slice(0,24) + "_" + uid().slice(0,4);
+    onAddField({key, label:newField.label.trim(), type:newField.type});
+    setNewField({label:"",type:"text"});
+    setFieldModal(false);
+  };
+
+  const editingDoc = modal ? doctors.find(d=>d.id===modal) : null;
+
+  return (
+    <div>
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+        <MonthPicker value={month} onChange={setMonth}/>
+        <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " md:w-44"}>
+          <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
+        </select>
+        <input placeholder="Search doctor…" value={search} onChange={e=>setSearch(e.target.value)} className={INP}/>
+        {isAdmin && <button onClick={()=>setFieldModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">+ Add Field</button>}
+      </div>
+      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {filtered.length} doctors · tap a row to plan</p>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                {["Doctor","Area","Priority","CRM","Mobile",...bizFieldDefs.map(f=>f.label),""].map((h,i)=>(
+                  <th key={i} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.map(d=>{
+                const entry = toObj(monthData[d.id]);
+                return (
+                  <tr key={d.id} className="hover:bg-gray-50 cursor-pointer" onClick={()=>openEdit(d)}>
+                    <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">{d.name}</td>
+                    <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{d.area}</span></td>
+                    <td className="px-3 py-2.5"><PriBadge p={d.priority}/></td>
+                    <td className="px-3 py-2.5 text-xs">{d.crmYN==="Yes"?<span className="text-emerald-600 font-bold">Yes</span>:<span className="text-gray-400">No</span>}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{d.mobile||"—"}</td>
+                    {bizFieldDefs.map(f=>(
+                      <td key={f.key} className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{entry[f.key]!==undefined && entry[f.key]!=="" ? (f.type==="number"?fmt(entry[f.key]):String(entry[f.key])) : "—"}</td>
+                    ))}
+                    <td className="px-3 py-2.5 text-teal-500 text-xs font-bold">Edit</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {filtered.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors found</div>}
+      </div>
+
+      <Modal open={!!modal} onClose={()=>setModal(null)} title={editingDoc ? `📋 ${editingDoc.name}` : "Business Plan"} wide>
+        {editingDoc && (
+          <div>
+            <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs text-gray-500 grid grid-cols-2 gap-y-1">
+              <span>MDL: <strong className="text-gray-700">{editingDoc.mdl||"—"}</strong></span>
+              <span>Area: <strong className="text-gray-700">{editingDoc.area}</strong></span>
+              <span>Specialty: <strong className="text-gray-700">{editingDoc.specialty||"—"}</strong></span>
+              <span>Mobile: <strong className="text-gray-700">{editingDoc.mobile||"—"}</strong></span>
+              <span>Priority: <PriBadge p={editingDoc.priority}/></span>
+              <span>CRM: <strong className="text-gray-700">{editingDoc.crmYN}{editingDoc.crmYN==="Yes"?` · ${fmt(editingDoc.crmAmt)}`:""}</strong></span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {bizFieldDefs.map(f=>(
+                <Fld key={f.key} label={f.label}>
+                  {f.type==="number"
+                    ? <input type="number" value={form[f.key]||""} onChange={e=>setForm({...form,[f.key]:e.target.value})} className={INP}/>
+                    : <input value={form[f.key]||""} onChange={e=>setForm({...form,[f.key]:e.target.value})} className={INP}/>}
+                </Fld>
+              ))}
+            </div>
+            <div className="flex gap-3 pt-4 mt-4 border-t border-gray-100">
+              <button onClick={()=>setModal(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+              <button onClick={save} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">Save Plan</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={fieldModal} onClose={()=>setFieldModal(false)} title="➕ Add Custom Field">
+        <div className="space-y-4">
+          <Fld label="Field Name"><input value={newField.label} onChange={e=>setNewField({...newField,label:e.target.value})} placeholder="e.g. Target Rx / Month" className={INP} autoFocus/></Fld>
+          <Fld label="Type">
+            <select value={newField.type} onChange={e=>setNewField({...newField,type:e.target.value})} className={INP}>
+              <option value="text">Text</option><option value="number">Number</option>
+            </select>
+          </Fld>
+          <div className="flex gap-3 pt-2">
+            <button onClick={()=>setFieldModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+            <button onClick={addField} disabled={!newField.label.trim()} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-40">Add Field</button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   TAB: CRM PLAN (month-wise)
+══════════════════════════════════ */
+const BLANK_CRM = () => ({doctorId:"",doctorName:"",mdl:"",area:"",crmPlanDate:today(),crmAmt:"",tentativeBizPM:""});
+
+function CrmPlanTab({doctors, crmplan, month, setMonth, onSave, notify, ask}) {
+  const list = toArr(crmplan[month]);
+  const [modal, setModal] = useState(false);
+  const [form, setForm]   = useState(BLANK_CRM());
+  const [editId, setEditId] = useState(null);
+  const [docSearch, setDocSearch] = useState("");
+
+  const openAdd  = () => { setForm(BLANK_CRM()); setEditId(null); setModal(true); };
+  const openEdit = (e) => { setForm({...e}); setEditId(e.id); setModal(true); };
+
+  const pickDoctor = (d) => {
+    setForm({...form, doctorId:d.id, doctorName:d.name, mdl:d.mdl||"", area:d.area||""});
+    setDocSearch("");
+  };
+
+  const save = () => {
+    if (!form.doctorName.trim() || !form.crmAmt) return;
+    const entry = {...form, crmAmt:Number(form.crmAmt)||0, tentativeBizPM:Number(form.tentativeBizPM)||0, id:editId||uid()};
+    if (editId) onSave(list.map(x=>x.id===editId?entry:x));
+    else onSave([...list, entry]);
+    notify(editId?"Updated!":"CRM plan added!");
+    setModal(false);
+  };
+
+  const del = (e) => ask(`Delete CRM plan for "${e.doctorName}"?`, () => {
+    onSave(list.filter(x=>x.id!==e.id));
+    notify("Deleted","red");
+  });
+
+  const totalCrm = list.reduce((s,e)=>s+Number(e.crmAmt||0),0);
+  const totalBiz = list.reduce((s,e)=>s+Number(e.tentativeBizPM||0),0);
+
+  return (
+    <div>
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+        <MonthPicker value={month} onChange={setMonth}/>
+        <button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap">+ Add CRM Plan</button>
+        <div className="ml-auto flex gap-4 text-xs">
+          <span className="text-gray-500">CRM Total: <strong className="text-teal-700">{fmt(totalCrm)}</strong></span>
+          <span className="text-gray-500">Tentative Business: <strong className="text-indigo-700">{fmt(totalBiz)}</strong></span>
+        </div>
+      </div>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>{["Doctor","MDL","Area","CRM Plan Date","CRM Amt","Tentative Biz p.m.","",""].map(h=>(
+                <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
+              ))}</tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {list.map(e=>(
+                <tr key={e.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2.5 font-semibold text-gray-800">{e.doctorName}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-400">{e.mdl||"—"}</td>
+                  <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{e.area}</span></td>
+                  <td className="px-3 py-2.5 text-xs text-gray-500">{e.crmPlanDate||"—"}</td>
+                  <td className="px-3 py-2.5 font-bold text-teal-700">{fmt(e.crmAmt)}</td>
+                  <td className="px-3 py-2.5 font-bold text-indigo-700">{fmt(e.tentativeBizPM)}</td>
+                  <td className="px-3 py-2.5"><button onClick={()=>openEdit(e)} className="text-teal-400 hover:text-teal-700">✏️</button></td>
+                  <td className="px-3 py-2.5"><button onClick={()=>del(e)} className="text-gray-200 hover:text-red-500">🗑️</button></td>
+                </tr>
+              ))}
+            </tbody>
+            {list.length>0 && (
+              <tfoot>
+                <tr className="bg-teal-50 border-t-2 border-teal-200 font-black text-sm">
+                  <td className="px-3 py-3 text-teal-800" colSpan={4}>Total</td>
+                  <td className="px-3 py-3 text-teal-700">{fmt(totalCrm)}</td>
+                  <td className="px-3 py-3 text-indigo-700">{fmt(totalBiz)}</td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        {list.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No CRM plans for {monthLabel(month)} yet</div>}
+      </div>
+
+      <Modal open={modal} onClose={()=>setModal(false)} title={editId?"✏️ Edit CRM Plan":"➕ Add CRM Plan"}>
+        <div className="space-y-4">
+          <Fld label="Doctor *">
+            {form.doctorName && <div className="flex items-center justify-between bg-teal-50 rounded-lg px-3 py-2 mb-2">
+              <span className="text-sm font-semibold text-teal-800">{form.doctorName} <span className="text-teal-400 font-normal">· {form.area}</span></span>
+              <button onClick={()=>setForm({...form,doctorId:"",doctorName:"",mdl:"",area:""})} className="text-teal-400 hover:text-teal-700 text-xs">change</button>
+            </div>}
+            {!form.doctorName && <div>
+              <input placeholder="Search doctor…" value={docSearch} onChange={e=>setDocSearch(e.target.value)} className={INP} autoFocus/>
+              {docSearch && (
+                <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-xl mt-1.5 divide-y divide-gray-50">
+                  {doctors.filter(d=>d.name.toLowerCase().includes(docSearch.toLowerCase())).slice(0,20).map(d=>(
+                    <button key={d.id} onClick={()=>pickDoctor(d)} className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm flex justify-between">
+                      <span className="font-semibold text-gray-700">{d.name}</span><span className="text-xs text-gray-400">{d.area}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>}
+          </Fld>
+          <Fld label="CRM Plan Date"><input type="date" value={form.crmPlanDate} onChange={e=>setForm({...form,crmPlanDate:e.target.value})} className={INP}/></Fld>
+          <div className="grid grid-cols-2 gap-3">
+            <Fld label="CRM Amt (Rs.) *"><input type="number" value={form.crmAmt} onChange={e=>setForm({...form,crmAmt:e.target.value})} className={INP}/></Fld>
+            <Fld label="Tentative Business p.m. (Rs.)"><input type="number" value={form.tentativeBizPM} onChange={e=>setForm({...form,tentativeBizPM:e.target.value})} className={INP}/></Fld>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button onClick={()=>setModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+            <button onClick={save} disabled={!form.doctorName||!form.crmAmt} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 disabled:opacity-40">{editId?"Update":"Add"}</button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   MAIN APP
+══════════════════════════════════ */
+function App() {
+  const [data, setData]       = useState({doctors:[], tourplan:{}, actual:{}, bizplan:{}, bizFieldDefs:[], crmplan:{}});
+  const [loaded, setLoaded]   = useState(false);
+  const [syncSt, setSyncSt]   = useState("connecting");
+  const [tab, setTab]         = useState("doctors");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminModal, setAdminModal] = useState(false);
+  const [pwInput, setPwInput] = useState("");
+  const [toast, setToast]     = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const [tpMonth, setTpMonth] = useState("2026-07");
+  const [avMonth, setAvMonth] = useState("2026-07");
+  const [bpMonth, setBpMonth] = useState("2026-07");
+  const [cpMonth, setCpMonth] = useState("2026-07");
+
+  useEffect(() => {
+    const ref = DB.ref(DB_PATH);
+    ref.on("value", snap => {
+      try {
+        const raw = snap.val();
+        if (raw === null) {
+          ref.set(SEED_DATA()).catch(console.error);
+        } else {
+          setData({
+            doctors: toArr(raw.doctors),
+            tourplan: toObj(raw.tourplan),
+            actual: toObj(raw.actual),
+            bizplan: toObj(raw.bizplan),
+            bizFieldDefs: toArr(raw.bizFieldDefs),
+            crmplan: toObj(raw.crmplan),
+          });
+          setLoaded(true);
+          setSyncSt("synced");
+        }
+      } catch (err) {
+        console.error("Read error:", err);
+        setSyncSt("error"); setLoaded(true);
+      }
+    }, err => { console.error(err); setSyncSt("error"); setLoaded(true); });
+    return () => ref.off();
+  }, []);
+
+  const save = (next) => {
+    setSyncSt("saving");
+    DB.ref(DB_PATH).set(next).then(()=>setSyncSt("synced")).catch(e=>{console.error(e); setSyncSt("error");});
+  };
+
+  const notify = (msg, c="green") => { setToast({msg,c}); setTimeout(()=>setToast(null),2600); };
+  const ask = (msg, onOk) => setConfirm({msg, onOk:()=>{onOk(); setConfirm(null);}});
+
+  const saveDoctors = (list) => save({...data, doctors:list});
+
+  const toggleTourplan = (docId, day) => {
+    const tp = JSON.parse(JSON.stringify(data.tourplan));
+    if (!tp[tpMonth]) tp[tpMonth] = {};
+    if (!tp[tpMonth][docId]) tp[tpMonth][docId] = {};
+    tp[tpMonth][docId][day] = !tp[tpMonth][docId][day];
+    if (!tp[tpMonth][docId][day]) delete tp[tpMonth][docId][day];
+    save({...data, tourplan:tp});
+  };
+
+  const toggleActual = (docId, day, force) => {
+    const ac = JSON.parse(JSON.stringify(data.actual));
+    if (!ac[avMonth]) ac[avMonth] = {};
+    if (!ac[avMonth][docId]) ac[avMonth][docId] = {};
+    const cur = !!ac[avMonth][docId][day];
+    ac[avMonth][docId][day] = force ? true : !cur;
+    if (!ac[avMonth][docId][day]) delete ac[avMonth][docId][day];
+    save({...data, actual:ac});
+  };
+
+  const saveBizEntry = (docId, form) => {
+    const bp = JSON.parse(JSON.stringify(data.bizplan));
+    if (!bp[bpMonth]) bp[bpMonth] = {};
+    bp[bpMonth][docId] = form;
+    save({...data, bizplan:bp});
+  };
+
+  const addBizField = (field) => save({...data, bizFieldDefs:[...data.bizFieldDefs, field]});
+
+  const saveCrm = (list) => {
+    const cp = {...data.crmplan, [cpMonth]: list};
+    save({...data, crmplan:cp});
+  };
+
+  const tryAdminLogin = () => {
+    if (pwInput === ADMIN_PASS) { setIsAdmin(true); setAdminModal(false); setPwInput(""); notify("Admin mode unlocked"); }
+    else { notify("Wrong password","red"); }
+  };
+
+  const TABS = [
+    ["doctors","👨‍⚕️ Doctor Master"],
+    ["tourplan","🗓️ Tour Plan"],
+    ["actual","✅ Actual Visits"],
+    ["bizplan","📊 Business Plan"],
+    ["crmplan","💰 CRM Plan"],
+  ];
+
+  if (!loaded) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50">
+      <div className="text-5xl animate-bounce">🩺</div>
+      <p className="font-bold text-gray-600 text-lg">Connecting to Aldan Beat Tracker…</p>
+      {syncSt==="error" && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-4 max-w-sm text-center mt-2">
+          <p className="text-red-700 font-bold">⚠️ Firebase connection failed</p>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[100] px-4 py-2.5 rounded-xl text-white text-sm font-bold shadow-xl
+          ${toast.c==="green"?"bg-emerald-500":toast.c==="red"?"bg-red-500":"bg-teal-500"}`}>{toast.msg}</div>
+      )}
+      <Confirm open={!!confirm} msg={confirm ? confirm.msg : ""} onOk={confirm ? confirm.onOk : null} onCancel={()=>setConfirm(null)}/>
+
+      <nav className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm flex-wrap gap-2">
+        <span className="text-lg font-black text-teal-700">🩺 Aldan Beat Tracker</span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2 py-1 rounded-full font-semibold hidden sm:inline
+            ${syncSt==="synced"?"bg-emerald-100 text-emerald-700":syncSt==="saving"?"bg-amber-100 text-amber-700":"bg-red-100 text-red-600"}`}>
+            {syncSt==="synced"?"● Live":syncSt==="saving"?"⟳ Saving":"✕ Error"}
+          </span>
+          {isAdmin
+            ? <button onClick={()=>setIsAdmin(false)} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">🔓 Admin Mode</button>
+            : <button onClick={()=>setAdminModal(true)} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold">🔒 Rep Mode</button>}
+        </div>
+      </nav>
+
+      <div className="max-w-6xl mx-auto px-4 py-5">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-5 w-fit flex-wrap">
+          {TABS.map(([t,lbl])=>(
+            <button key={t} onClick={()=>setTab(t)} className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${tab===t?"bg-white text-teal-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{lbl}</button>
+          ))}
+        </div>
+
+        {tab==="doctors" && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
+        {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={data.tourplan} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan}/>}
+        {tab==="actual" && <ActualVisitsTab doctors={data.doctors} tourplan={data.tourplan} actual={data.actual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} mode={isAdmin?"admin":"rep"}/>}
+        {tab==="bizplan" && <BusinessPlanTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} month={bpMonth} setMonth={setBpMonth} onSaveEntry={saveBizEntry} onAddField={addBizField} isAdmin={isAdmin} notify={notify}/>}
+        {tab==="crmplan" && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} notify={notify} ask={ask}/>}
+      </div>
+
+      <Modal open={adminModal} onClose={()=>setAdminModal(false)} title="🔒 Admin Login">
+        <div className="space-y-4">
+          <Fld label="Admin Password">
+            <input type="password" value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tryAdminLogin()} className={INP} autoFocus/>
+          </Fld>
+          <div className="flex gap-3">
+            <button onClick={()=>setAdminModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+            <button onClick={tryAdminLogin} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">Unlock</button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
