@@ -57,6 +57,7 @@ const today = () => new Date().toISOString().split("T")[0];
 const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const daysInMonth = (mk) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m, 0).getDate(); };
 const weekdayOf   = (mk, d) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m-1, d).getDay(); };
+const workingDaysInMonth = (mk) => { const n = daysInMonth(mk); let c=0; for (let d=1; d<=n; d++) { if (weekdayOf(mk,d)!==0) c++; } return c; }; // Mon-Sat, Sunday off
 const monthLabel  = (mk) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m-1, 1).toLocaleDateString("en-IN",{month:"long",year:"numeric"}); };
 const PRIORITIES = ["High","Medium","Low"];
 const PRI_COLOR = {High:"bg-red-100 text-red-700",Medium:"bg-amber-100 text-amber-700",Low:"bg-gray-100 text-gray-600"};
@@ -262,27 +263,46 @@ function DoctorMasterTab({doctors, isAdmin, onSave, notify, ask}) {
 ══════════════════════════════════ */
 function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
-  const [areaSel, setAreaSel] = useState(areas[0] || "");
-  useEffect(() => { if (!areas.includes(areaSel) && areas.length) setAreaSel(areas[0]); }, [areas.join(",")]);
+  const [areaSel, setAreaSel] = useState("All");
 
   const nDays = daysInMonth(month);
   const days = Array.from({length:nDays}, (_,i)=>i+1);
   const monthDocs = toObj(tourplan[month]);
-  const rows = doctors.filter(d => d.area===areaSel);
+  const rows = areaSel==="All" ? doctors : doctors.filter(d => d.area===areaSel);
 
   const plannedCount = (docId) => Object.values(toObj(monthDocs[docId])).filter(Boolean).length;
+  const totalCalls = rows.reduce((s,d)=>s+plannedCount(d.id), 0);
+  const workDays = workingDaysInMonth(month);
+  const callAvg = workDays ? (totalCalls / workDays).toFixed(1) : "0.0";
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
         <MonthPicker value={month} onChange={setMonth}/>
         <div className="flex gap-1.5 flex-wrap">
+          <button onClick={()=>setAreaSel("All")} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel==="All"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>All Areas</button>
           {areas.map(a=>(
             <button key={a} onClick={()=>setAreaSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>{a}</button>
           ))}
         </div>
       </div>
-      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors in {areaSel} · tap a cell to plan a visit</p>
+
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Total Calls Planned</p>
+          <p className="text-lg font-black text-teal-700">{totalCalls}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Working Days</p>
+          <p className="text-lg font-black text-gray-700">{workDays}<span className="text-xs font-normal text-gray-400"> (Mon–Sat)</span></p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Call Avg / Day</p>
+          <p className="text-lg font-black text-indigo-700">{callAvg}</p>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors {areaSel==="All"?"(all areas)":`in ${areaSel}`} · tap a cell to plan a visit</p>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="text-xs border-collapse">
@@ -291,8 +311,8 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
                 <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-bold text-gray-400 uppercase whitespace-nowrap z-10 border-r border-gray-100">Doctor</th>
                 {days.map(d=>{
                   const wd = weekdayOf(month,d);
-                  const weekend = wd===0||wd===6;
-                  return <th key={d} className={`px-1.5 py-1 text-center font-bold ${weekend?"bg-gray-200 text-gray-500":"text-gray-400"}`} style={{minWidth:"26px"}}>
+                  const offDay = wd===0;
+                  return <th key={d} className={`px-1.5 py-1 text-center font-bold ${offDay?"bg-gray-200 text-gray-500":"text-gray-400"}`} style={{minWidth:"26px"}}>
                     <div>{d}</div><div className="text-[9px] font-normal">{WD[wd]}</div>
                   </th>;
                 })}
@@ -306,14 +326,15 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
                   <tr key={d.id} className="hover:bg-gray-50">
                     <td className="sticky left-0 bg-white px-3 py-1.5 font-semibold text-gray-700 whitespace-nowrap border-r border-gray-100">
                       {d.name}<span className="text-gray-300 font-normal"> · {d.mdl||"—"}</span>
+                      {areaSel==="All" && <span className="text-teal-400 font-normal"> · {d.area}</span>}
                     </td>
                     {days.map(day=>{
                       const wd = weekdayOf(month,day);
-                      const weekend = wd===0||wd===6;
+                      const offDay = wd===0;
                       const checked = !!dMap[day];
                       return (
                         <td key={day} onClick={()=>onToggle(d.id, day)}
-                          className={`text-center cursor-pointer select-none ${weekend?"bg-gray-50":""} ${checked?"bg-teal-100":""}`}>
+                          className={`text-center cursor-pointer select-none ${offDay?"bg-gray-50":""} ${checked?"bg-teal-100":""}`}>
                           {checked ? <span className="text-teal-600 font-bold">✓</span> : <span className="text-gray-200">·</span>}
                         </td>
                       );
@@ -492,6 +513,13 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
 
   const monthData = toObj(bizplan[month]);
 
+  const numFields = bizFieldDefs.filter(f=>f.type==="number");
+  const totals = {};
+  numFields.forEach(f => {
+    totals[f.key] = doctors.reduce((s,d)=>s+Number(toObj(monthData[d.id])[f.key]||0),0);
+  });
+  const plannedCount = doctors.filter(d=>Object.keys(toObj(monthData[d.id])).length>0).length;
+
   const filtered = doctors.filter(d =>
     (areaSel==="All" || d.area===areaSel) &&
     d.name.toLowerCase().includes(search.toLowerCase())
@@ -527,6 +555,14 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
         </select>
         <input placeholder="Search doctor…" value={search} onChange={e=>setSearch(e.target.value)} className={INP}/>
         {isAdmin && <button onClick={()=>setFieldModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">+ Add Field</button>}
+      </div>
+
+      <div className="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 mb-4 flex flex-wrap gap-x-6 gap-y-1.5 text-xs">
+        <span className="text-teal-700 font-bold">{plannedCount} of {doctors.length} doctors planned</span>
+        {numFields.map(f=>(
+          <span key={f.key} className="text-gray-600">{f.label}: <strong className="text-teal-700">{fmt(totals[f.key])}</strong></span>
+        ))}
+        {numFields.length===0 && <span className="text-gray-400">Add a number field to track totals</span>}
       </div>
       <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {filtered.length} doctors · tap a row to plan</p>
 
@@ -729,6 +765,184 @@ function CrmPlanTab({doctors, crmplan, month, setMonth, onSave, notify, ask}) {
 }
 
 /* ══════════════════════════════════
+   REPORT HTML BUILDER (print / share)
+══════════════════════════════════ */
+function buildReportHTML(title, monthLbl, headers, rows, totalsRow) {
+  const css = `*{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#1f2937}
+  #reportbody{padding:20px}
+  h1{font-size:19px;font-weight:800;color:#0f766e;border-bottom:3px solid #0f766e;padding-bottom:7px;margin-bottom:4px}
+  .meta{font-size:11px;color:#6b7280;margin-bottom:16px}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th{background:#0f766e;color:#fff;padding:7px 8px;text-align:left;font-size:10px;text-transform:uppercase;white-space:nowrap}
+  td{padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px;white-space:nowrap}
+  tr:nth-child(even) td{background:#f9fafb}
+  .tf td{background:#ccfbf1;font-weight:800;border-top:2px solid #0f766e}
+  #actionbar{display:flex;gap:10px;padding:12px 16px;background:#0f766e;position:sticky;top:0;z-index:100;align-items:center;flex-wrap:wrap}
+  #actionbar span{color:rgba(255,255,255,0.7);font-size:12px;flex:1;min-width:120px}
+  .abtn{border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .sharebtn{background:#25d366;color:#fff}
+  .printbtn{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3)}
+  @media print{#actionbar{display:none!important}}`;
+
+  const bodyRows = rows.map(r => `<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("");
+  const totalsHtml = totalsRow ? `<tr class="tf">${totalsRow.map(c=>`<td>${c}</td>`).join("")}</tr>` : "";
+  const shareTxt = encodeURIComponent(`📑 ${title}\n${monthLbl}\n\n` + rows.map(r=>r.join(" · ")).join("\n") + (totalsRow?`\n\nTOTAL: ${totalsRow.join(" · ")}`:"") + `\n\nGenerated by Aldan Beat Tracker`);
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${title} – Aldan Beat Tracker</title><style>${css}</style></head><body>
+  <div id="actionbar">
+    <span>📑 ${title}</span>
+    <button class="abtn sharebtn" id="shareBtn">📤 Share</button>
+    <button class="abtn printbtn" id="printBtn">🖨️ Print / PDF</button>
+  </div>
+  <div id="reportbody">
+    <h1>${title}</h1>
+    <div class="meta">${monthLbl} · Aldan Beat Tracker · ${rows.length} doctors</div>
+    <table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>${bodyRows}</tbody><tfoot>${totalsHtml}</tfoot></table>
+  </div>
+  <script>
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const textBody = decodeURIComponent('${shareTxt}');
+    if (!isMobile) { window.onload = () => setTimeout(()=>window.print(), 500); }
+    document.getElementById('shareBtn').onclick = async () => {
+      if (navigator.share) { try { await navigator.share({ title: ${JSON.stringify(title)}, text: textBody }); } catch(e) { if (e.name!=='AbortError') window.print(); } }
+      else { window.open('https://wa.me/?text=' + encodeURIComponent(textBody), '_blank'); }
+    };
+    document.getElementById('printBtn').onclick = () => window.print();
+  <\/script>
+  </body></html>`;
+}
+
+/* ══════════════════════════════════
+   TAB: REPORTS
+══════════════════════════════════ */
+function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
+  const [month, setMonth] = useState("2026-07");
+  const [type, setType]   = useState("biz"); // biz | crm
+
+  const monthData = toObj(bizplan[month]);
+  const bizRows = doctors
+    .map(d => ({doc:d, entry: toObj(monthData[d.id])}))
+    .filter(r => Object.keys(r.entry).some(k => r.entry[k]!==undefined && r.entry[k]!==""));
+
+  const numFields = bizFieldDefs.filter(f=>f.type==="number");
+  const bizTotals = {};
+  numFields.forEach(f => { bizTotals[f.key] = bizRows.reduce((s,r)=>s+Number(r.entry[f.key]||0),0); });
+
+  const crmRows = toArr(crmplan[month]);
+  const crmTotalAmt = crmRows.reduce((s,e)=>s+Number(e.crmAmt||0),0);
+  const crmTotalBiz = crmRows.reduce((s,e)=>s+Number(e.tentativeBizPM||0),0);
+
+  const generate = () => {
+    let html;
+    if (type==="biz") {
+      const headers = ["Doctor","MDL","Area","Priority", ...bizFieldDefs.map(f=>f.label)];
+      const rows = bizRows.map(r => [
+        r.doc.name, r.doc.mdl||"—", r.doc.area, r.doc.priority||"Medium",
+        ...bizFieldDefs.map(f => r.entry[f.key]!==undefined && r.entry[f.key]!=="" ? (f.type==="number"?fmt(r.entry[f.key]):r.entry[f.key]) : "—")
+      ]);
+      const totalsRow = ["TOTAL","","","", ...bizFieldDefs.map(f=>f.type==="number"?fmt(bizTotals[f.key]):"")];
+      html = buildReportHTML("Business Plan Report", monthLabel(month), headers, rows, totalsRow);
+    } else {
+      const headers = ["Doctor","MDL","Area","CRM Plan Date","CRM Amt","Tentative Biz p.m."];
+      const rows = crmRows.map(e => [e.doctorName, e.mdl||"—", e.area, e.crmPlanDate||"—", fmt(e.crmAmt), fmt(e.tentativeBizPM)]);
+      const totalsRow = ["TOTAL","","","", fmt(crmTotalAmt), fmt(crmTotalBiz)];
+      html = buildReportHTML("CRM Plan Report", monthLabel(month), headers, rows, totalsRow);
+    }
+    const win = window.open('', '_blank');
+    if (!win) { alert('Popup blocked — please allow popups to view the report'); return; }
+    win.document.open(); win.document.write(html); win.document.close();
+  };
+
+  const rows = type==="biz" ? bizRows : crmRows;
+
+  return (
+    <div>
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+        <MonthPicker value={month} onChange={setMonth}/>
+        <div className="flex gap-1.5">
+          <button onClick={()=>setType("biz")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="biz"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>📊 Business Plan</button>
+          <button onClick={()=>setType("crm")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="crm"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>💰 CRM Plan</button>
+        </div>
+        <button onClick={generate} className="md:ml-auto bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap">📤 Generate / Share Report</button>
+      </div>
+
+      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors with {type==="biz"?"a business plan":"a CRM plan"}</p>
+
+      {type==="biz" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{["Doctor","MDL","Area","Priority",...bizFieldDefs.map(f=>f.label)].map((h,i)=>(
+                  <th key={i} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {bizRows.map(r=>(
+                  <tr key={r.doc.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">{r.doc.name}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-400">{r.doc.mdl||"—"}</td>
+                    <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{r.doc.area}</span></td>
+                    <td className="px-3 py-2.5"><PriBadge p={r.doc.priority}/></td>
+                    {bizFieldDefs.map(f=>(
+                      <td key={f.key} className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{r.entry[f.key]!==undefined && r.entry[f.key]!=="" ? (f.type==="number"?fmt(r.entry[f.key]):r.entry[f.key]) : "—"}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+              {bizRows.length>0 && (
+                <tfoot><tr className="bg-teal-50 border-t-2 border-teal-200 font-black text-sm">
+                  <td className="px-3 py-3 text-teal-800" colSpan={4}>Total</td>
+                  {bizFieldDefs.map(f=>(<td key={f.key} className="px-3 py-3 text-teal-700">{f.type==="number"?fmt(bizTotals[f.key]):""}</td>))}
+                </tr></tfoot>
+              )}
+            </table>
+          </div>
+          {bizRows.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No business plans for {monthLabel(month)} yet</div>}
+        </div>
+      )}
+
+      {type==="crm" && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{["Doctor","MDL","Area","CRM Plan Date","CRM Amt","Tentative Biz p.m."].map(h=>(
+                  <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {crmRows.map(e=>(
+                  <tr key={e.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2.5 font-semibold text-gray-800">{e.doctorName}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-400">{e.mdl||"—"}</td>
+                    <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{e.area}</span></td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{e.crmPlanDate||"—"}</td>
+                    <td className="px-3 py-2.5 font-bold text-teal-700">{fmt(e.crmAmt)}</td>
+                    <td className="px-3 py-2.5 font-bold text-indigo-700">{fmt(e.tentativeBizPM)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {crmRows.length>0 && (
+                <tfoot><tr className="bg-teal-50 border-t-2 border-teal-200 font-black text-sm">
+                  <td className="px-3 py-3 text-teal-800" colSpan={4}>Total</td>
+                  <td className="px-3 py-3 text-teal-700">{fmt(crmTotalAmt)}</td>
+                  <td className="px-3 py-3 text-indigo-700">{fmt(crmTotalBiz)}</td>
+                </tr></tfoot>
+              )}
+            </table>
+          </div>
+          {crmRows.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No CRM plans for {monthLabel(month)} yet</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
    MAIN APP
 ══════════════════════════════════ */
 function App() {
@@ -822,11 +1036,12 @@ function App() {
   };
 
   const TABS = [
-    ["doctors","👨‍⚕️ Doctor Master"],
-    ["tourplan","🗓️ Tour Plan"],
-    ["actual","✅ Actual Visits"],
-    ["bizplan","📊 Business Plan"],
-    ["crmplan","💰 CRM Plan"],
+    ["doctors","👨‍⚕️","Doctors"],
+    ["tourplan","🗓️","Tour Plan"],
+    ["actual","✅","Visits"],
+    ["bizplan","📊","Biz Plan"],
+    ["crmplan","💰","CRM"],
+    ["reports","📑","Reports"],
   ];
 
   if (!loaded) return (
@@ -852,7 +1067,7 @@ function App() {
       <nav className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm flex-wrap gap-2">
         <span className="text-lg font-black text-teal-700">🩺 Aldan Beat Tracker</span>
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-1 rounded-full font-semibold hidden sm:inline
+          <span className={`text-xs px-2 py-1 rounded-full font-semibold
             ${syncSt==="synced"?"bg-emerald-100 text-emerald-700":syncSt==="saving"?"bg-amber-100 text-amber-700":"bg-red-100 text-red-600"}`}>
             {syncSt==="synced"?"● Live":syncSt==="saving"?"⟳ Saving":"✕ Error"}
           </span>
@@ -862,19 +1077,23 @@ function App() {
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-4 py-5">
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-5 w-fit flex-wrap">
-          {TABS.map(([t,lbl])=>(
-            <button key={t} onClick={()=>setTab(t)} className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${tab===t?"bg-white text-teal-700 shadow-sm":"text-gray-500 hover:text-gray-700"}`}>{lbl}</button>
-          ))}
-        </div>
-
+      <div className="max-w-6xl mx-auto px-4 py-5 pb-24">
         {tab==="doctors" && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
         {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={data.tourplan} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan}/>}
         {tab==="actual" && <ActualVisitsTab doctors={data.doctors} tourplan={data.tourplan} actual={data.actual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} mode={isAdmin?"admin":"rep"}/>}
         {tab==="bizplan" && <BusinessPlanTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} month={bpMonth} setMonth={setBpMonth} onSaveEntry={saveBizEntry} onAddField={addBizField} isAdmin={isAdmin} notify={notify}/>}
         {tab==="crmplan" && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} notify={notify} ask={ask}/>}
+        {tab==="reports" && <ReportsTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} crmplan={data.crmplan}/>}
       </div>
+
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 flex" style={{boxShadow:"0 -2px 10px rgba(0,0,0,0.05)"}}>
+        {TABS.map(([t,icon,lbl])=>(
+          <button key={t} onClick={()=>setTab(t)} className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 ${tab===t?"text-teal-700":"text-gray-400"}`}>
+            <span className="text-base leading-none">{icon}</span>
+            <span className="text-[9px] font-bold leading-none">{lbl}</span>
+          </button>
+        ))}
+      </nav>
 
       <Modal open={adminModal} onClose={()=>setAdminModal(false)} title="🔒 Admin Login">
         <div className="space-y-4">
