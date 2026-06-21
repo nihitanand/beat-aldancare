@@ -58,6 +58,11 @@ const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const daysInMonth = (mk) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m, 0).getDate(); };
 const weekdayOf   = (mk, d) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m-1, d).getDay(); };
 const workingDaysInMonth = (mk) => { const n = daysInMonth(mk); let c=0; for (let d=1; d<=n; d++) { if (weekdayOf(mk,d)!==0) c++; } return c; }; // Mon-Sat, Sunday off
+const visitOf = (v) => {
+  if (v === true) return {done:true, companions:[]};
+  if (v && typeof v === "object") return {done: !!v.done, companions: toArr(v.companions)};
+  return {done:false, companions:[]};
+};
 const monthLabel  = (mk) => { const [y,m] = mk.split("-").map(Number); return new Date(y, m-1, 1).toLocaleDateString("en-IN",{month:"long",year:"numeric"}); };
 const PRIORITIES = ["High","Medium","Low"];
 const PRI_COLOR = {High:"bg-red-100 text-red-700",Medium:"bg-amber-100 text-amber-700",Low:"bg-gray-100 text-gray-600"};
@@ -81,9 +86,18 @@ const buildSeedTourplan = () => {
   return tp;
 };
 
+const ALDERMA_PRODUCTS = [
+  "ITRADAN-200 CAPS","LULIDAN CREAM","FUSIDAN CREAM","NYGELIS TABS","NYGELIS CREAM",
+  "ALDANGLO-P FW PUMP","ALDANGLO FW TUBE","ALDANVIT-D","CALASILK","MELACYN TABS",
+  "MELACYN CREAM","ALZIN-C TABS","UVDAN SPF50","SOMOIST MOIST LOTION","SOMOIST BATHING BAR",
+  "SOMOIST CREAM","MELALUX CREAM","ACNIGEL-S CREAM",
+];
+const COMPANIONS = ["Nitu Kumari (Manager)","Director"];
+const APP_VERSION = "v1.1";
+
 const SEED_BIZFIELDS = [
   {key:"tentativeBiz", label:"Tentative Business (Rs.)", type:"number"},
-  {key:"focusProduct",  label:"Focus Product", type:"text"},
+  {key:"focusProduct",  label:"Focus Product", type:"select"},
   {key:"remarks",       label:"Remarks", type:"text"},
 ];
 
@@ -199,15 +213,16 @@ function DoctorMasterTab({doctors, isAdmin, onSave, notify, ask}) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>{["MDL","Name","Area","Specialty","Priority","CRM","CRM Amt","Mobile",""].map(h=>(
+              <tr>{["#","Name","MDL","Area","Specialty","Priority","CRM","CRM Amt","Mobile",""].map(h=>(
                 <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
               ))}</tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.map(d=>(
+              {filtered.map((d,idx)=>(
                 <tr key={d.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2.5 text-xs text-gray-400">{d.mdl||"—"}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-400">{idx+1}</td>
                   <td className="px-3 py-2.5 font-semibold text-gray-800">{d.name}</td>
+                  <td className="px-3 py-2.5 text-xs text-gray-400">{d.mdl||"—"}</td>
                   <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{d.area}</span></td>
                   <td className="px-3 py-2.5 text-xs text-gray-500">{d.specialty||"—"}</td>
                   <td className="px-3 py-2.5"><PriBadge p={d.priority}/></td>
@@ -268,12 +283,15 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
   const nDays = daysInMonth(month);
   const days = Array.from({length:nDays}, (_,i)=>i+1);
   const monthDocs = toObj(tourplan[month]);
-  const rows = areaSel==="All" ? doctors : doctors.filter(d => d.area===areaSel);
+  const rows = areaSel==="All" ? [] : doctors.filter(d => d.area===areaSel);
 
   const plannedCount = (docId) => Object.values(toObj(monthDocs[docId])).filter(Boolean).length;
-  const totalCalls = rows.reduce((s,d)=>s+plannedCount(d.id), 0);
+  const scopeDocs = areaSel==="All" ? doctors : rows;
+  const totalCalls = scopeDocs.reduce((s,d)=>s+plannedCount(d.id), 0);
   const workDays = workingDaysInMonth(month);
   const callAvg = workDays ? (totalCalls / workDays).toFixed(1) : "0.0";
+
+  const DOC_COL_W = 150, TOT_COL_W = 40;
 
   return (
     <div>
@@ -302,52 +320,102 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
         </div>
       </div>
 
-      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors {areaSel==="All"?"(all areas)":`in ${areaSel}`} · tap a cell to plan a visit</p>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="text-xs border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-bold text-gray-400 uppercase whitespace-nowrap z-10 border-r border-gray-100">Doctor</th>
-                {days.map(d=>{
-                  const wd = weekdayOf(month,d);
-                  const offDay = wd===0;
-                  return <th key={d} className={`px-1.5 py-1 text-center font-bold ${offDay?"bg-gray-200 text-gray-500":"text-gray-400"}`} style={{minWidth:"26px"}}>
-                    <div>{d}</div><div className="text-[9px] font-normal">{WD[wd]}</div>
-                  </th>;
+      {areaSel==="All" ? (
+        <div>
+          <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · all areas · pick an area above to mark visits (grid view works one area at a time for usability)</p>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Area</th>
+                  <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Doctors</th>
+                  <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Calls Planned</th>
+                  <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {areas.map(a=>{
+                  const aDocs = doctors.filter(d=>d.area===a);
+                  const aCalls = aDocs.reduce((s,d)=>s+plannedCount(d.id),0);
+                  return (
+                    <tr key={a} className="hover:bg-gray-50 cursor-pointer" onClick={()=>setAreaSel(a)}>
+                      <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{a}</span></td>
+                      <td className="px-3 py-2.5 text-gray-600">{aDocs.length}</td>
+                      <td className="px-3 py-2.5 font-bold text-teal-700">{aCalls}</td>
+                      <td className="px-3 py-2.5 text-teal-400 text-xs font-bold">Open →</td>
+                    </tr>
+                  );
                 })}
-                <th className="px-2 py-2 text-center font-bold text-gray-400">Tot</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rows.map(d=>{
-                const dMap = toObj(monthDocs[d.id]);
-                return (
-                  <tr key={d.id} className="hover:bg-gray-50">
-                    <td className="sticky left-0 bg-white px-3 py-1.5 font-semibold text-gray-700 whitespace-nowrap border-r border-gray-100">
-                      {d.name}<span className="text-gray-300 font-normal"> · {d.mdl||"—"}</span>
-                      {areaSel==="All" && <span className="text-teal-400 font-normal"> · {d.area}</span>}
-                    </td>
-                    {days.map(day=>{
-                      const wd = weekdayOf(month,day);
-                      const offDay = wd===0;
-                      const checked = !!dMap[day];
-                      return (
-                        <td key={day} onClick={()=>onToggle(d.id, day)}
-                          className={`text-center cursor-pointer select-none ${offDay?"bg-gray-50":""} ${checked?"bg-teal-100":""}`}>
-                          {checked ? <span className="text-teal-600 font-bold">✓</span> : <span className="text-gray-200">·</span>}
-                        </td>
-                      );
-                    })}
-                    <td className="text-center font-bold text-teal-700">{plannedCount(d.id)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
-        {rows.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors in this area</div>}
-      </div>
+      ) : (
+        <div>
+          <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors in {areaSel} · tap a cell to plan a visit</p>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-bold text-gray-400 uppercase whitespace-nowrap z-20 border-r border-gray-100" style={{width:DOC_COL_W,minWidth:DOC_COL_W}}>Doctor</th>
+                    <th className="sticky bg-gray-50 px-1 py-2 text-center font-bold text-gray-400 uppercase z-20 border-r border-gray-100" style={{left:DOC_COL_W,width:TOT_COL_W,minWidth:TOT_COL_W}}>Tot</th>
+                    {days.map(d=>{
+                      const wd = weekdayOf(month,d);
+                      const offDay = wd===0;
+                      return <th key={d} className={`px-1.5 py-1 text-center font-bold ${offDay?"bg-gray-200 text-gray-500":"text-gray-400"}`} style={{minWidth:"26px"}}>
+                        <div>{d}</div><div className="text-[9px] font-normal">{WD[wd]}</div>
+                      </th>;
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {rows.map(d=>{
+                    const dMap = toObj(monthDocs[d.id]);
+                    return (
+                      <tr key={d.id} className="hover:bg-gray-50">
+                        <td className="sticky left-0 bg-white px-3 py-1.5 font-semibold text-gray-700 whitespace-nowrap border-r border-gray-100 z-10" style={{width:DOC_COL_W,minWidth:DOC_COL_W}}>
+                          {d.name}<span className="text-gray-300 font-normal"> · {d.mdl||"—"}</span>
+                        </td>
+                        <td className="sticky bg-white text-center font-bold text-teal-700 border-r border-gray-100 z-10" style={{left:DOC_COL_W,width:TOT_COL_W,minWidth:TOT_COL_W}}>{plannedCount(d.id)}</td>
+                        {days.map(day=>{
+                          const wd = weekdayOf(month,day);
+                          const offDay = wd===0;
+                          const checked = !!dMap[day];
+                          return (
+                            <td key={day} onClick={()=>onToggle(d.id, day)}
+                              className={`text-center cursor-pointer select-none ${offDay?"bg-gray-50":""} ${checked?"bg-teal-100":""}`}>
+                              {checked ? <span className="text-teal-600 font-bold">✓</span> : <span className="text-gray-200">·</span>}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {rows.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors in this area</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompanionChips({companions, onChange}) {
+  const isIndependent = !companions || companions.length===0;
+  const toggle = (name) => {
+    const set = new Set(companions||[]);
+    if (set.has(name)) set.delete(name); else set.add(name);
+    onChange(Array.from(set));
+  };
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      <button onClick={()=>onChange([])} className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${isIndependent?"bg-gray-700 text-white border-gray-700":"bg-white text-gray-400 border-gray-200"}`}>Independent</button>
+      {COMPANIONS.map(c=>(
+        <button key={c} onClick={()=>toggle(c)} className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${(companions||[]).includes(c)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"}`}>{c}</button>
+      ))}
     </div>
   );
 }
@@ -355,8 +423,9 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
 /* ══════════════════════════════════
    TAB: ACTUAL VISITS
 ══════════════════════════════════ */
-function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleActual, mode}) {
+function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleActual, onSetCompanions, onClearPlan, mode}) {
   const [view, setView] = useState("daily"); // daily | grid
+  const nDays = daysInMonth(month);
   const [date, setDate] = useState(() => {
     const d = new Date();
     const mk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -365,18 +434,39 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState(areas[0] || "");
   useEffect(() => { if (!areas.includes(areaSel) && areas.length) setAreaSel(areas[0]); }, [areas.join(",")]);
+  const [extraDocs, setExtraDocs] = useState([]);
+  useEffect(() => { setExtraDocs([]); }, [areaSel, month]);
 
-  const nDays = daysInMonth(month);
   const monthPlan   = toObj(tourplan[month]);
   const monthActual = toObj(actual[month]);
 
+  const [companionFilter, setCompanionFilter] = useState([]); // [] = no filter; values: "Independent" or a companion name
+
+  const matchesFilter = (docId) => {
+    if (companionFilter.length===0) return true;
+    const v = visitOf(toObj(monthActual[docId])[date]);
+    return companionFilter.some(f => f==="Independent" ? v.companions.length===0 : v.companions.includes(f));
+  };
+
   /* ── Daily view: doctors planned for selected date ── */
-  const plannedToday = doctors.filter(d => !!toObj(monthPlan[d.id])[date]);
-  const visitedIds = new Set(Object.keys(monthActual).filter(id => !!toObj(monthActual[id])[date]));
-  const unplannedVisited = doctors.filter(d => visitedIds.has(String(d.id)) && !plannedToday.find(p=>p.id===d.id));
+  const plannedToday = doctors.filter(d => !!toObj(monthPlan[d.id])[date] && matchesFilter(d.id));
+  const visitedIds = new Set(Object.keys(monthActual).filter(id => !!visitOf(toObj(monthActual[id])[date]).done));
+  const unplannedVisited = doctors.filter(d => visitedIds.has(String(d.id)) && !doctors.filter(x=>!!toObj(monthPlan[x.id])[date]).find(p=>p.id===d.id) && matchesFilter(d.id));
 
   const [addOpen, setAddOpen] = useState(false);
   const [addSearch, setAddSearch] = useState("");
+  const [gridAddOpen, setGridAddOpen] = useState(false);
+  const [gridAddSearch, setGridAddSearch] = useState("");
+
+  const dateStr = `${month}-${String(date).padStart(2,"0")}`;
+  const minDate = `${month}-01`;
+  const maxDate = `${month}-${String(nDays).padStart(2,"0")}`;
+
+  const gridDocs = useMemo(() => {
+    const base = doctors.filter(d=>d.area===areaSel);
+    const extras = doctors.filter(d=>extraDocs.includes(d.id) && d.area!==areaSel);
+    return [...base, ...extras];
+  }, [doctors, areaSel, extraDocs]);
 
   return (
     <div>
@@ -388,11 +478,21 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
 
       {view==="daily" && (
         <div>
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <input type="range" min="1" max={nDays} value={date} onChange={e=>setDate(Number(e.target.value))} className="w-40"/>
-            <span className="font-black text-teal-700 text-lg">{date} {monthLabel(month)}</span>
+          <div className="flex items-center gap-3 mb-3 flex-wrap">
+            <input type="date" value={dateStr} min={minDate} max={maxDate}
+              onChange={e=>{ const d = Number(e.target.value.split("-")[2]); if (d>=1 && d<=nDays) setDate(d); }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-teal-700"/>
             <span className="text-xs text-gray-400">({WD[weekdayOf(month,date)]})</span>
             <button onClick={()=>setAddOpen(true)} className="ml-auto bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Unplanned Visit</button>
+          </div>
+
+          <div className="flex gap-1.5 flex-wrap mb-4">
+            <span className="text-[10px] font-bold uppercase text-gray-400 self-center mr-1">Filter:</span>
+            {["Independent", ...COMPANIONS].map(f=>(
+              <button key={f} onClick={()=>setCompanionFilter(p=>p.includes(f)?p.filter(x=>x!==f):[...p,f])}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${companionFilter.includes(f)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"}`}>{f}</button>
+            ))}
+            {companionFilter.length>0 && <button onClick={()=>setCompanionFilter([])} className="text-[10px] text-gray-400 underline self-center">clear</button>}
           </div>
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
@@ -400,16 +500,19 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
             {plannedToday.length===0 && <div className="text-center py-8 text-gray-300 text-sm">No doctors planned for this date</div>}
             <div className="divide-y divide-gray-50">
               {plannedToday.map(d=>{
-                const done = !!toObj(monthActual[d.id])[date];
+                const v = visitOf(toObj(monthActual[d.id])[date]);
                 return (
-                  <div key={d.id} className="flex items-center justify-between px-4 py-3">
-                    <div>
-                      <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
-                      <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"} {d.priority==="High" && <PriBadge p="High"/>}</p>
+                  <div key={d.id} className="px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
+                        <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"} {d.priority==="High" && <PriBadge p="High"/>}</p>
+                      </div>
+                      <button onClick={()=>onToggleActual(d.id, date)} className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap ${v.done?"bg-emerald-100 text-emerald-700":"bg-gray-100 text-gray-500"}`}>
+                        {v.done?"✓ Visited":"Mark Visited"}
+                      </button>
                     </div>
-                    <button onClick={()=>onToggleActual(d.id, date)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${done?"bg-emerald-100 text-emerald-700":"bg-gray-100 text-gray-500"}`}>
-                      {done?"✓ Visited":"Mark Visited"}
-                    </button>
+                    <CompanionChips companions={v.companions} onChange={(c)=>onSetCompanions(d.id, date, c)}/>
                   </div>
                 );
               })}
@@ -420,15 +523,21 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
             <div className="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
               <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 text-xs font-bold text-amber-700 uppercase">Unplanned Visits ({unplannedVisited.length})</div>
               <div className="divide-y divide-gray-50">
-                {unplannedVisited.map(d=>(
-                  <div key={d.id} className="flex items-center justify-between px-4 py-3">
-                    <div>
-                      <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
-                      <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"}</p>
+                {unplannedVisited.map(d=>{
+                  const v = visitOf(toObj(monthActual[d.id])[date]);
+                  return (
+                    <div key={d.id} className="px-4 py-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
+                          <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"}</p>
+                        </div>
+                        <button onClick={()=>onToggleActual(d.id, date)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">✓ Visited</button>
+                      </div>
+                      <CompanionChips companions={v.companions} onChange={(c)=>onSetCompanions(d.id, date, c)}/>
                     </div>
-                    <button onClick={()=>onToggleActual(d.id, date)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">✓ Visited</button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -454,8 +563,9 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
             {areas.map(a=>(
               <button key={a} onClick={()=>setAreaSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>{a}</button>
             ))}
+            <button onClick={()=>setGridAddOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white">+ Add Doctor</button>
           </div>
-          <div className="flex gap-4 text-xs mb-3 text-gray-500">
+          <div className="flex gap-4 text-xs mb-3 text-gray-500 flex-wrap">
             <span><span className="inline-block w-3 h-3 bg-blue-100 border border-blue-300 align-middle mr-1"></span>Planned only</span>
             <span><span className="inline-block w-3 h-3 bg-emerald-200 border border-emerald-400 align-middle mr-1"></span>Visited</span>
             <span><span className="inline-block w-3 h-3 bg-amber-200 border border-amber-400 align-middle mr-1"></span>Unplanned visit</span>
@@ -469,30 +579,53 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
                     {Array.from({length:nDays},(_,i)=>i+1).map(d=>(
                       <th key={d} className="px-1.5 py-1 text-center font-bold text-gray-400" style={{minWidth:"24px"}}>{d}</th>
                     ))}
+                    <th className="px-2 py-2 text-center font-bold text-gray-400">Plan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {doctors.filter(d=>d.area===areaSel).map(d=>{
+                  {gridDocs.map(d=>{
                     const pMap = toObj(monthPlan[d.id]);
                     const aMap = toObj(monthActual[d.id]);
+                    const hasPlan = Object.values(pMap).some(Boolean);
                     return (
                       <tr key={d.id} className="hover:bg-gray-50">
-                        <td className="sticky left-0 bg-white px-3 py-1.5 font-semibold text-gray-700 whitespace-nowrap border-r border-gray-100">{d.name}</td>
+                        <td className="sticky left-0 bg-white px-3 py-1.5 font-semibold text-gray-700 whitespace-nowrap border-r border-gray-100">
+                          {d.name}{extraDocs.includes(d.id) && <span className="text-amber-500 font-normal"> · {d.area}</span>}
+                        </td>
                         {Array.from({length:nDays},(_,i)=>i+1).map(day=>{
-                          const planned = !!pMap[day], done = !!aMap[day];
+                          const planned = !!pMap[day], done = visitOf(aMap[day]).done;
                           let cls = "text-gray-200";
                           if (planned && done) cls = "bg-emerald-200 text-emerald-800 font-bold";
                           else if (planned) cls = "bg-blue-100 text-blue-600";
                           else if (done) cls = "bg-amber-200 text-amber-800 font-bold";
                           return <td key={day} onClick={()=>onToggleActual(d.id, day)} className={`text-center cursor-pointer select-none ${cls}`}>{planned||done?"✓":"·"}</td>;
                         })}
+                        <td className="text-center">
+                          {hasPlan
+                            ? <button onClick={()=>onClearPlan(d.id)} title="Remove this doctor's plan for the month" className="text-red-400 hover:text-red-600 font-bold">✕</button>
+                            : <span className="text-gray-200">—</span>}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            {gridDocs.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors in this area</div>}
           </div>
+
+          <Modal open={gridAddOpen} onClose={()=>setGridAddOpen(false)} title="➕ Add Doctor to Grid">
+            <input placeholder="Search any doctor…" value={gridAddSearch} onChange={e=>setGridAddSearch(e.target.value)} className={INP + " mb-3"} autoFocus/>
+            <div className="max-h-72 overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
+              {doctors.filter(d=>d.name.toLowerCase().includes(gridAddSearch.toLowerCase())).slice(0,40).map(d=>(
+                <button key={d.id} onClick={()=>{setExtraDocs(p=>p.includes(d.id)?p:[...p,d.id]); setGridAddOpen(false); setGridAddSearch("");}}
+                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 flex justify-between items-center">
+                  <span className="text-sm font-semibold text-gray-700">{d.name}</span>
+                  <span className="text-xs text-gray-400">{d.area}</span>
+                </button>
+              ))}
+            </div>
+          </Modal>
         </div>
       )}
     </div>
@@ -526,7 +659,8 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
   );
 
   const openEdit = (d) => {
-    setForm({...toObj(monthData[d.id])});
+    const entry = toObj(monthData[d.id]);
+    setForm({...entry, priority: entry.priority || d.priority || "Medium", crmYN: entry.crmYN || d.crmYN || "No", crmAmt: entry.crmAmt!==undefined ? entry.crmAmt : d.crmAmt, tentativeCrmMonth: entry.tentativeCrmMonth || month});
     setModal(d.id);
   };
 
@@ -607,13 +741,30 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
               <span>Area: <strong className="text-gray-700">{editingDoc.area}</strong></span>
               <span>Specialty: <strong className="text-gray-700">{editingDoc.specialty||"—"}</strong></span>
               <span>Mobile: <strong className="text-gray-700">{editingDoc.mobile||"—"}</strong></span>
-              <span>Priority: <PriBadge p={editingDoc.priority}/></span>
-              <span>CRM: <strong className="text-gray-700">{editingDoc.crmYN}{editingDoc.crmYN==="Yes"?` · ${fmt(editingDoc.crmAmt)}`:""}</strong></span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <Fld label="Priority">
+                <select value={form.priority||"Medium"} onChange={e=>setForm({...form,priority:e.target.value})} className={INP}>
+                  {PRIORITIES.map(p=><option key={p}>{p}</option>)}
+                </select>
+              </Fld>
+              <Fld label="CRM">
+                <select value={form.crmYN||"No"} onChange={e=>setForm({...form,crmYN:e.target.value})} className={INP}>
+                  <option>No</option><option>Yes</option>
+                </select>
+              </Fld>
+              {form.crmYN==="Yes" && <Fld label="Tentative CRM Month"><MonthPicker value={form.tentativeCrmMonth||month} onChange={v=>setForm({...form,tentativeCrmMonth:v})}/></Fld>}
+              {form.crmYN==="Yes" && <Fld label="CRM Amt (Rs.)"><input type="number" value={form.crmAmt||""} onChange={e=>setForm({...form,crmAmt:e.target.value})} className={INP}/></Fld>}
             </div>
             <div className="grid grid-cols-2 gap-4">
               {bizFieldDefs.map(f=>(
                 <Fld key={f.key} label={f.label}>
-                  {f.type==="number"
+                  {f.key==="focusProduct"
+                    ? <select value={form[f.key]||""} onChange={e=>setForm({...form,[f.key]:e.target.value})} className={INP}>
+                        <option value="">— Select product —</option>
+                        {ALDERMA_PRODUCTS.map(p=><option key={p} value={p}>{p}</option>)}
+                      </select>
+                    : f.type==="number"
                     ? <input type="number" value={form[f.key]||""} onChange={e=>setForm({...form,[f.key]:e.target.value})} className={INP}/>
                     : <input value={form[f.key]||""} onChange={e=>setForm({...form,[f.key]:e.target.value})} className={INP}/>}
                 </Fld>
@@ -648,20 +799,26 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
 /* ══════════════════════════════════
    TAB: CRM PLAN (month-wise)
 ══════════════════════════════════ */
-const BLANK_CRM = () => ({doctorId:"",doctorName:"",mdl:"",area:"",crmPlanDate:today(),crmAmt:"",tentativeBizPM:""});
+const BLANK_CRM = () => ({doctorId:"",doctorName:"",mdl:"",area:"",crmPlanDate:today(),actualMonth:"",crmAmt:"",tentativeBizPM:"",priority:"Medium"});
 
-function CrmPlanTab({doctors, crmplan, month, setMonth, onSave, notify, ask}) {
+function CrmPlanTab({doctors, crmplan, month, setMonth, onSave, onSavePriority, notify, ask}) {
   const list = toArr(crmplan[month]);
   const [modal, setModal] = useState(false);
   const [form, setForm]   = useState(BLANK_CRM());
   const [editId, setEditId] = useState(null);
   const [docSearch, setDocSearch] = useState("");
+  const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
+  const [areaSel, setAreaSel] = useState("All");
 
-  const openAdd  = () => { setForm(BLANK_CRM()); setEditId(null); setModal(true); };
-  const openEdit = (e) => { setForm({...e}); setEditId(e.id); setModal(true); };
+  const openAdd  = (presetDoc) => {
+    if (presetDoc) setForm({...BLANK_CRM(), doctorId:presetDoc.id, doctorName:presetDoc.name, mdl:presetDoc.mdl||"", area:presetDoc.area||"", priority:presetDoc.priority||"Medium"});
+    else setForm(BLANK_CRM());
+    setEditId(null); setModal(true);
+  };
+  const openEdit = (e) => { setForm({...BLANK_CRM(), ...e}); setEditId(e.id); setModal(true); };
 
   const pickDoctor = (d) => {
-    setForm({...form, doctorId:d.id, doctorName:d.name, mdl:d.mdl||"", area:d.area||""});
+    setForm({...form, doctorId:d.id, doctorName:d.name, mdl:d.mdl||"", area:d.area||"", priority:d.priority||"Medium"});
     setDocSearch("");
   };
 
@@ -670,6 +827,7 @@ function CrmPlanTab({doctors, crmplan, month, setMonth, onSave, notify, ask}) {
     const entry = {...form, crmAmt:Number(form.crmAmt)||0, tentativeBizPM:Number(form.tentativeBizPM)||0, id:editId||uid()};
     if (editId) onSave(list.map(x=>x.id===editId?entry:x));
     else onSave([...list, entry]);
+    if (form.doctorId && form.priority) onSavePriority(form.doctorId, form.priority);
     notify(editId?"Updated!":"CRM plan added!");
     setModal(false);
   };
@@ -681,53 +839,87 @@ function CrmPlanTab({doctors, crmplan, month, setMonth, onSave, notify, ask}) {
 
   const totalCrm = list.reduce((s,e)=>s+Number(e.crmAmt||0),0);
   const totalBiz = list.reduce((s,e)=>s+Number(e.tentativeBizPM||0),0);
+  const entryForDoc = (docId) => list.find(e=>e.doctorId===docId);
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
         <MonthPicker value={month} onChange={setMonth}/>
-        <button onClick={openAdd} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap">+ Add CRM Plan</button>
-        <div className="ml-auto flex gap-4 text-xs">
+        <button onClick={()=>openAdd()} className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap">+ Add CRM Plan</button>
+        <div className="md:ml-auto flex gap-4 text-xs">
           <span className="text-gray-500">CRM Total: <strong className="text-teal-700">{fmt(totalCrm)}</strong></span>
           <span className="text-gray-500">Tentative Business: <strong className="text-indigo-700">{fmt(totalBiz)}</strong></span>
         </div>
       </div>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>{["Doctor","MDL","Area","CRM Plan Date","CRM Amt","Tentative Biz p.m.","",""].map(h=>(
-                <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
-              ))}</tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {list.map(e=>(
-                <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2.5 font-semibold text-gray-800">{e.doctorName}</td>
-                  <td className="px-3 py-2.5 text-xs text-gray-400">{e.mdl||"—"}</td>
-                  <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{e.area}</span></td>
-                  <td className="px-3 py-2.5 text-xs text-gray-500">{e.crmPlanDate||"—"}</td>
-                  <td className="px-3 py-2.5 font-bold text-teal-700">{fmt(e.crmAmt)}</td>
-                  <td className="px-3 py-2.5 font-bold text-indigo-700">{fmt(e.tentativeBizPM)}</td>
-                  <td className="px-3 py-2.5"><button onClick={()=>openEdit(e)} className="text-teal-400 hover:text-teal-700">✏️</button></td>
-                  <td className="px-3 py-2.5"><button onClick={()=>del(e)} className="text-gray-200 hover:text-red-500">🗑️</button></td>
-                </tr>
-              ))}
-            </tbody>
-            {list.length>0 && (
-              <tfoot>
-                <tr className="bg-teal-50 border-t-2 border-teal-200 font-black text-sm">
-                  <td className="px-3 py-3 text-teal-800" colSpan={4}>Total</td>
-                  <td className="px-3 py-3 text-teal-700">{fmt(totalCrm)}</td>
-                  <td className="px-3 py-3 text-indigo-700">{fmt(totalBiz)}</td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-        {list.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No CRM plans for {monthLabel(month)} yet</div>}
+
+      <div className="flex gap-1.5 flex-wrap mb-4">
+        <button onClick={()=>setAreaSel("All")} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel==="All"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>All</button>
+        {areas.map(a=>(
+          <button key={a} onClick={()=>setAreaSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>{a}</button>
+        ))}
       </div>
+
+      {areaSel==="All" ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100">
+                <tr>{["Doctor","MDL","Area","Plan Date","Actual Month","CRM Amt","Tentative Biz p.m.","",""].map(h=>(
+                  <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {list.map(e=>(
+                  <tr key={e.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">{e.doctorName}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-400">{e.mdl||"—"}</td>
+                    <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{e.area}</span></td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{e.crmPlanDate||"—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{e.actualMonth?monthLabel(e.actualMonth):"—"}</td>
+                    <td className="px-3 py-2.5 font-bold text-teal-700">{fmt(e.crmAmt)}</td>
+                    <td className="px-3 py-2.5 font-bold text-indigo-700">{fmt(e.tentativeBizPM)}</td>
+                    <td className="px-3 py-2.5"><button onClick={()=>openEdit(e)} className="text-teal-400 hover:text-teal-700">✏️</button></td>
+                    <td className="px-3 py-2.5"><button onClick={()=>del(e)} className="text-gray-200 hover:text-red-500">🗑️</button></td>
+                  </tr>
+                ))}
+              </tbody>
+              {list.length>0 && (
+                <tfoot>
+                  <tr className="bg-teal-50 border-t-2 border-teal-200 font-black text-sm">
+                    <td className="px-3 py-3 text-teal-800" colSpan={5}>Total</td>
+                    <td className="px-3 py-3 text-teal-700">{fmt(totalCrm)}</td>
+                    <td className="px-3 py-3 text-indigo-700">{fmt(totalBiz)}</td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+          {list.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No CRM plans for {monthLabel(month)} yet</div>}
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 bg-teal-50 border-b border-teal-100 text-xs font-bold text-teal-700 uppercase">{areaSel} · {doctors.filter(d=>d.area===areaSel).length} doctors</div>
+          <div className="divide-y divide-gray-50">
+            {doctors.filter(d=>d.area===areaSel).map(d=>{
+              const e = entryForDoc(d.id);
+              return (
+                <div key={d.id} className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-gray-800 text-sm">{d.name} <span className="text-gray-300 font-normal text-xs">· {d.mdl||"—"}</span></p>
+                    {e
+                      ? <p className="text-xs text-gray-400">Plan: {e.crmPlanDate||"—"} · Actual: {e.actualMonth?monthLabel(e.actualMonth):"—"} · <strong className="text-teal-700">{fmt(e.crmAmt)}</strong></p>
+                      : <p className="text-xs text-gray-300">No CRM plan for {monthLabel(month)}</p>}
+                  </div>
+                  {e
+                    ? <button onClick={()=>openEdit(e)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-teal-50 text-teal-700">✏️ Edit</button>
+                    : <button onClick={()=>openAdd(d)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500 text-white">+ Add</button>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <Modal open={modal} onClose={()=>setModal(false)} title={editId?"✏️ Edit CRM Plan":"➕ Add CRM Plan"}>
         <div className="space-y-4">
@@ -749,11 +941,19 @@ function CrmPlanTab({doctors, crmplan, month, setMonth, onSave, notify, ask}) {
               )}
             </div>}
           </Fld>
-          <Fld label="CRM Plan Date"><input type="date" value={form.crmPlanDate} onChange={e=>setForm({...form,crmPlanDate:e.target.value})} className={INP}/></Fld>
+          <div className="grid grid-cols-2 gap-3">
+            <Fld label="CRM Plan Date"><input type="date" value={form.crmPlanDate} onChange={e=>setForm({...form,crmPlanDate:e.target.value})} className={INP}/></Fld>
+            <Fld label="Actual Month"><MonthPicker value={form.actualMonth||""} onChange={v=>setForm({...form,actualMonth:v})}/></Fld>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Fld label="CRM Amt (Rs.) *"><input type="number" value={form.crmAmt} onChange={e=>setForm({...form,crmAmt:e.target.value})} className={INP}/></Fld>
             <Fld label="Tentative Business p.m. (Rs.)"><input type="number" value={form.tentativeBizPM} onChange={e=>setForm({...form,tentativeBizPM:e.target.value})} className={INP}/></Fld>
           </div>
+          <Fld label="Priority">
+            <select value={form.priority||"Medium"} onChange={e=>setForm({...form,priority:e.target.value})} className={INP}>
+              {PRIORITIES.map(p=><option key={p}>{p}</option>)}
+            </select>
+          </Fld>
           <div className="flex gap-3 pt-2">
             <button onClick={()=>setModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
             <button onClick={save} disabled={!form.doctorName||!form.crmAmt} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 disabled:opacity-40">{editId?"Update":"Add"}</button>
@@ -819,11 +1019,14 @@ function buildReportHTML(title, monthLbl, headers, rows, totalsRow) {
    TAB: REPORTS
 ══════════════════════════════════ */
 function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
-  const [month, setMonth] = useState("2026-07");
+  const [month, setMonth] = useState("2026-06");
   const [type, setType]   = useState("biz"); // biz | crm
+  const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
+  const [areaSel, setAreaSel] = useState("All");
 
   const monthData = toObj(bizplan[month]);
   const bizRows = doctors
+    .filter(d => areaSel==="All" || d.area===areaSel)
     .map(d => ({doc:d, entry: toObj(monthData[d.id])}))
     .filter(r => Object.keys(r.entry).some(k => r.entry[k]!==undefined && r.entry[k]!==""));
 
@@ -831,7 +1034,7 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
   const bizTotals = {};
   numFields.forEach(f => { bizTotals[f.key] = bizRows.reduce((s,r)=>s+Number(r.entry[f.key]||0),0); });
 
-  const crmRows = toArr(crmplan[month]);
+  const crmRows = toArr(crmplan[month]).filter(e => areaSel==="All" || e.area===areaSel);
   const crmTotalAmt = crmRows.reduce((s,e)=>s+Number(e.crmAmt||0),0);
   const crmTotalBiz = crmRows.reduce((s,e)=>s+Number(e.tentativeBizPM||0),0);
 
@@ -844,12 +1047,12 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
         ...bizFieldDefs.map(f => r.entry[f.key]!==undefined && r.entry[f.key]!=="" ? (f.type==="number"?fmt(r.entry[f.key]):r.entry[f.key]) : "—")
       ]);
       const totalsRow = ["TOTAL","","","", ...bizFieldDefs.map(f=>f.type==="number"?fmt(bizTotals[f.key]):"")];
-      html = buildReportHTML("Business Plan Report", monthLabel(month), headers, rows, totalsRow);
+      html = buildReportHTML("Business Plan Report" + (areaSel!=="All"?` — ${areaSel}`:""), monthLabel(month), headers, rows, totalsRow);
     } else {
-      const headers = ["Doctor","MDL","Area","CRM Plan Date","CRM Amt","Tentative Biz p.m."];
-      const rows = crmRows.map(e => [e.doctorName, e.mdl||"—", e.area, e.crmPlanDate||"—", fmt(e.crmAmt), fmt(e.tentativeBizPM)]);
-      const totalsRow = ["TOTAL","","","", fmt(crmTotalAmt), fmt(crmTotalBiz)];
-      html = buildReportHTML("CRM Plan Report", monthLabel(month), headers, rows, totalsRow);
+      const headers = ["Doctor","MDL","Area","Plan Date","Actual Month","CRM Amt","Tentative Biz p.m."];
+      const rows = crmRows.map(e => [e.doctorName, e.mdl||"—", e.area, e.crmPlanDate||"—", e.actualMonth?monthLabel(e.actualMonth):"—", fmt(e.crmAmt), fmt(e.tentativeBizPM)]);
+      const totalsRow = ["TOTAL","","","","", fmt(crmTotalAmt), fmt(crmTotalBiz)];
+      html = buildReportHTML("CRM Plan Report" + (areaSel!=="All"?` — ${areaSel}`:""), monthLabel(month), headers, rows, totalsRow);
     }
     const win = window.open('', '_blank');
     if (!win) { alert('Popup blocked — please allow popups to view the report'); return; }
@@ -860,16 +1063,19 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
         <MonthPicker value={month} onChange={setMonth}/>
         <div className="flex gap-1.5">
           <button onClick={()=>setType("biz")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="biz"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>📊 Business Plan</button>
           <button onClick={()=>setType("crm")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="crm"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>💰 CRM Plan</button>
         </div>
+        <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " md:w-44"}>
+          <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
+        </select>
         <button onClick={generate} className="md:ml-auto bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap">📤 Generate / Share Report</button>
       </div>
 
-      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors with {type==="biz"?"a business plan":"a CRM plan"}</p>
+      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} {areaSel!=="All"&&`· ${areaSel}`} · {rows.length} doctors with {type==="biz"?"a business plan":"a CRM plan"}</p>
 
       {type==="biz" && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -910,17 +1116,18 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
-                <tr>{["Doctor","MDL","Area","CRM Plan Date","CRM Amt","Tentative Biz p.m."].map(h=>(
-                  <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">{h}</th>
+                <tr>{["Doctor","MDL","Area","Plan Date","Actual Month","CRM Amt","Tentative Biz p.m."].map(h=>(
+                  <th key={h} className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">{h}</th>
                 ))}</tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {crmRows.map(e=>(
                   <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2.5 font-semibold text-gray-800">{e.doctorName}</td>
+                    <td className="px-3 py-2.5 font-semibold text-gray-800 whitespace-nowrap">{e.doctorName}</td>
                     <td className="px-3 py-2.5 text-xs text-gray-400">{e.mdl||"—"}</td>
                     <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-xs bg-teal-50 text-teal-700">{e.area}</span></td>
                     <td className="px-3 py-2.5 text-xs text-gray-500">{e.crmPlanDate||"—"}</td>
+                    <td className="px-3 py-2.5 text-xs text-gray-500">{e.actualMonth?monthLabel(e.actualMonth):"—"}</td>
                     <td className="px-3 py-2.5 font-bold text-teal-700">{fmt(e.crmAmt)}</td>
                     <td className="px-3 py-2.5 font-bold text-indigo-700">{fmt(e.tentativeBizPM)}</td>
                   </tr>
@@ -928,7 +1135,7 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
               </tbody>
               {crmRows.length>0 && (
                 <tfoot><tr className="bg-teal-50 border-t-2 border-teal-200 font-black text-sm">
-                  <td className="px-3 py-3 text-teal-800" colSpan={4}>Total</td>
+                  <td className="px-3 py-3 text-teal-800" colSpan={5}>Total</td>
                   <td className="px-3 py-3 text-teal-700">{fmt(crmTotalAmt)}</td>
                   <td className="px-3 py-3 text-indigo-700">{fmt(crmTotalBiz)}</td>
                 </tr></tfoot>
@@ -955,10 +1162,10 @@ function App() {
   const [pwInput, setPwInput] = useState("");
   const [toast, setToast]     = useState(null);
   const [confirm, setConfirm] = useState(null);
-  const [tpMonth, setTpMonth] = useState("2026-07");
-  const [avMonth, setAvMonth] = useState("2026-07");
-  const [bpMonth, setBpMonth] = useState("2026-07");
-  const [cpMonth, setCpMonth] = useState("2026-07");
+  const [tpMonth, setTpMonth] = useState("2026-06");
+  const [avMonth, setAvMonth] = useState("2026-06");
+  const [bpMonth, setBpMonth] = useState("2026-06");
+  const [cpMonth, setCpMonth] = useState("2026-06");
 
   useEffect(() => {
     const ref = DB.ref(DB_PATH);
@@ -1010,24 +1217,74 @@ function App() {
     const ac = JSON.parse(JSON.stringify(data.actual));
     if (!ac[avMonth]) ac[avMonth] = {};
     if (!ac[avMonth][docId]) ac[avMonth][docId] = {};
-    const cur = !!ac[avMonth][docId][day];
-    ac[avMonth][docId][day] = force ? true : !cur;
-    if (!ac[avMonth][docId][day]) delete ac[avMonth][docId][day];
+    const cur = visitOf(ac[avMonth][docId][day]);
+    const nextDone = force ? true : !cur.done;
+    if (!nextDone && cur.companions.length===0) {
+      delete ac[avMonth][docId][day];
+    } else {
+      ac[avMonth][docId][day] = {done: nextDone, companions: cur.companions};
+    }
     save({...data, actual:ac});
+  };
+
+  const setCompanions = (docId, day, companions) => {
+    const ac = JSON.parse(JSON.stringify(data.actual));
+    if (!ac[avMonth]) ac[avMonth] = {};
+    if (!ac[avMonth][docId]) ac[avMonth][docId] = {};
+    const cur = visitOf(ac[avMonth][docId][day]);
+    if (!cur.done && companions.length===0) {
+      delete ac[avMonth][docId][day];
+    } else {
+      ac[avMonth][docId][day] = {done: cur.done, companions};
+    }
+    save({...data, actual:ac});
+  };
+
+  const clearPlan = (docId) => {
+    const tp = JSON.parse(JSON.stringify(data.tourplan));
+    if (tp[avMonth]) delete tp[avMonth][docId];
+    save({...data, tourplan:tp});
   };
 
   const saveBizEntry = (docId, form) => {
     const bp = JSON.parse(JSON.stringify(data.bizplan));
     if (!bp[bpMonth]) bp[bpMonth] = {};
     bp[bpMonth][docId] = form;
-    save({...data, bizplan:bp});
+    let next = {...data, bizplan:bp};
+    // Sync CRM Yes/No + amt to doctor master, and create/update a CRM Plan entry if CRM=Yes
+    if (form.crmYN === "Yes" || form.crmYN === "No") {
+      next.doctors = next.doctors.map(d => d.id===docId ? {...d, crmYN: form.crmYN, crmAmt: Number(form.crmAmt)||0, priority: form.priority||d.priority} : d);
+      if (form.crmYN === "Yes" && form.tentativeCrmMonth) {
+        const doc = next.doctors.find(d=>d.id===docId);
+        const cpKey = form.tentativeCrmMonth;
+        const cpList = toArr(next.crmplan[cpKey]);
+        const existingIdx = cpList.findIndex(e=>e.doctorId===docId);
+        const entry = {
+          id: existingIdx>=0 ? cpList[existingIdx].id : uid(),
+          doctorId: docId, doctorName: doc.name, mdl: doc.mdl||"", area: doc.area,
+          crmPlanDate: existingIdx>=0 ? cpList[existingIdx].crmPlanDate : `${cpKey}-01`,
+          crmAmt: Number(form.crmAmt)||0,
+          tentativeBizPM: Number(form.tentativeBiz)||0,
+          actualMonth: existingIdx>=0 ? cpList[existingIdx].actualMonth : "",
+        };
+        const nextList = existingIdx>=0 ? cpList.map((e,i)=>i===existingIdx?entry:e) : [...cpList, entry];
+        next.crmplan = {...next.crmplan, [cpKey]: nextList};
+      }
+    } else if (form.priority) {
+      next.doctors = next.doctors.map(d => d.id===docId ? {...d, priority: form.priority} : d);
+    }
+    save(next);
   };
 
   const addBizField = (field) => save({...data, bizFieldDefs:[...data.bizFieldDefs, field]});
 
-  const saveCrm = (list) => {
-    const cp = {...data.crmplan, [cpMonth]: list};
+  const saveCrm = (list, monthKey) => {
+    const cp = {...data.crmplan, [monthKey||cpMonth]: list};
     save({...data, crmplan:cp});
+  };
+
+  const saveDoctorPriority = (docId, priority) => {
+    save({...data, doctors: data.doctors.map(d=>d.id===docId?{...d,priority}:d)});
   };
 
   const tryAdminLogin = () => {
@@ -1036,18 +1293,18 @@ function App() {
   };
 
   const TABS = [
-    ["doctors","👨‍⚕️","Doctors"],
     ["tourplan","🗓️","Tour Plan"],
     ["actual","✅","Visits"],
     ["bizplan","📊","Biz Plan"],
     ["crmplan","💰","CRM"],
+    ["doctors","👨‍⚕️","Doctors"],
     ["reports","📑","Reports"],
   ];
 
   if (!loaded) return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50">
       <div className="text-5xl animate-bounce">🩺</div>
-      <p className="font-bold text-gray-600 text-lg">Connecting to Aldan Beat Tracker…</p>
+      <p className="font-bold text-gray-600 text-lg">Connecting to Aldan Beat…</p>
       {syncSt==="error" && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-4 max-w-sm text-center mt-2">
           <p className="text-red-700 font-bold">⚠️ Firebase connection failed</p>
@@ -1065,7 +1322,13 @@ function App() {
       <Confirm open={!!confirm} msg={confirm ? confirm.msg : ""} onOk={confirm ? confirm.onOk : null} onCancel={()=>setConfirm(null)}/>
 
       <nav className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm flex-wrap gap-2">
-        <span className="text-lg font-black text-teal-700">🩺 Aldan Beat Tracker</span>
+        <div>
+          <span className="text-lg font-black text-teal-700">🩺 Aldan Beat</span>
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest -mt-0.5">
+            {(tab==="tourplan"?monthLabel(tpMonth):tab==="actual"?monthLabel(avMonth):tab==="bizplan"?monthLabel(bpMonth):tab==="crmplan"?monthLabel(cpMonth):"")}
+            {(tab==="tourplan"||tab==="actual"||tab==="bizplan"||tab==="crmplan") && " · "}{APP_VERSION}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs px-2 py-1 rounded-full font-semibold
             ${syncSt==="synced"?"bg-emerald-100 text-emerald-700":syncSt==="saving"?"bg-amber-100 text-amber-700":"bg-red-100 text-red-600"}`}>
@@ -1080,9 +1343,9 @@ function App() {
       <div className="max-w-6xl mx-auto px-4 py-5 pb-24">
         {tab==="doctors" && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
         {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={data.tourplan} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan}/>}
-        {tab==="actual" && <ActualVisitsTab doctors={data.doctors} tourplan={data.tourplan} actual={data.actual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} mode={isAdmin?"admin":"rep"}/>}
+        {tab==="actual" && <ActualVisitsTab doctors={data.doctors} tourplan={data.tourplan} actual={data.actual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"}/>}
         {tab==="bizplan" && <BusinessPlanTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} month={bpMonth} setMonth={setBpMonth} onSaveEntry={saveBizEntry} onAddField={addBizField} isAdmin={isAdmin} notify={notify}/>}
-        {tab==="crmplan" && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} notify={notify} ask={ask}/>}
+        {tab==="crmplan" && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} onSavePriority={saveDoctorPriority} notify={notify} ask={ask}/>}
         {tab==="reports" && <ReportsTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} crmplan={data.crmplan}/>}
       </div>
 
