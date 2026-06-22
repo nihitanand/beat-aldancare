@@ -93,8 +93,31 @@ const ALDERMA_PRODUCTS = [
   "MELACYN CREAM","ALZIN-C TABS","UVDAN SPF50","SOMOIST MOIST LOTION","SOMOIST BATHING BAR",
   "SOMOIST CREAM","MELALUX CREAM","ACNIGEL-S CREAM",
 ];
-const COMPANIONS = ["Nitu Kumari (Manager)","Director"];
-const APP_VERSION = "v1.2";
+
+const USERS = [
+  {id:"amit",  name:"Amit Kumar",   role:"MBED"},
+  {id:"nitu",  name:"Nitu Kumari",  role:"ASMD"},
+  {id:"nihit", name:"Nihit Anand",  role:"Director"},
+];
+const USER_PIN = "1234";
+const COMPANION_TO_USER = {
+  "Nitu Kumari (Manager)": "nitu",
+  "Director":               "nihit",
+  "Amit Kumar (MBED)":      "amit",
+};
+const USER_COMPANION_LABEL = {
+  amit:  "Amit Kumar (MBED)",
+  nitu:  "Nitu Kumari (Manager)",
+  nihit: "Director",
+};
+const USER_COMPANIONS = {
+  amit:  ["Nitu Kumari (Manager)","Director"],
+  nitu:  ["Amit Kumar (MBED)","Director"],
+  nihit: ["Amit Kumar (MBED)","Nitu Kumari (Manager)"],
+};
+// Keep COMPANIONS as fallback for any component still referencing it
+const COMPANIONS = USER_COMPANIONS.amit;
+const APP_VERSION = "v1.3";
 
 const SEED_BIZFIELDS = [
   {key:"tentativeBiz", label:"Tentative Business (Rs.)", type:"number"},
@@ -376,7 +399,7 @@ function DoctorMasterTab({doctors, isAdmin, onSave, notify, ask}) {
 /* ══════════════════════════════════
    TAB: TOUR PLAN (month-wise)
 ══════════════════════════════════ */
-function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctorsToTP, onRemoveDoctorFromTP}) {
+function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctorsToTP, onRemoveDoctorFromTP, availableCompanions}) {
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState("All");
   const [tpView, setTpView] = useState("grid"); // grid | daily
@@ -411,7 +434,7 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
   return (
     <div>
       {addOpen && <MultiSelectPicker doctors={doctors} title="Add Doctors to Tour Plan"
-        onConfirm={(ids)=>onAddDoctorsToTP(ids, date, tpView==="daily")}
+        onConfirm={(ids)=>onAddDoctorsToTP(ids, date, tpView==="daily", companionFilter)}
         onClose={()=>setAddOpen(false)}/>}
 
       <div className="flex flex-col gap-2 mb-3">
@@ -466,7 +489,7 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
         <div>
           <div className="flex gap-1.5 flex-wrap mb-3">
             <span className="text-[10px] font-bold uppercase text-gray-400 self-center mr-1">Companion:</span>
-            {["Independent",...COMPANIONS].map(f=>(
+            {["Independent",...(availableCompanions||COMPANIONS)].map(f=>(
               <button key={f} onClick={()=>setCompanionFilter(p=>p.includes(f)?p.filter(x=>x!==f):[...p,f])}
                 className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${companionFilter.includes(f)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"}`}>{f}</button>
             ))}
@@ -584,7 +607,8 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
   );
 }
 
-function CompanionChips({companions, onChange}) {
+function CompanionChips({companions, onChange, availableCompanions}) {
+  const compList = availableCompanions || COMPANIONS;
   const isIndependent = !companions || companions.length===0;
   const toggleCompanion = (name) => {
     const set = new Set(companions||[]);
@@ -597,9 +621,8 @@ function CompanionChips({companions, onChange}) {
         className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${isIndependent?"bg-gray-700 text-white border-gray-700":"bg-white text-gray-400 border-gray-200"}`}>
         Independent
       </button>
-      {COMPANIONS.map(c=>(
+      {compList.map(c=>(
         <button key={c} onClick={()=>toggleCompanion(c)}
-          disabled={false}
           className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${(companions||[]).includes(c)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"} ${isIndependent?"opacity-40 cursor-not-allowed":""}`}>
           {c}
         </button>
@@ -611,7 +634,7 @@ function CompanionChips({companions, onChange}) {
 /* ══════════════════════════════════
    TAB: ACTUAL VISITS
 ══════════════════════════════════ */
-function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleActual, onSetCompanions, onClearPlan, mode}) {
+function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleActual, onSetCompanions, onClearPlan, mode, availableCompanions}) {
   const [view, setView] = useState("daily"); // daily | grid
   const nDays = daysInMonth(month);
   const [date, setDate] = useState(() => {
@@ -680,7 +703,7 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
 
           <div className="flex gap-1.5 flex-wrap mb-4">
             <span className="text-[10px] font-bold uppercase text-gray-400 self-center mr-1">Filter:</span>
-            {["Independent", ...COMPANIONS].map(f=>(
+            {["Independent", ...(availableCompanions||COMPANIONS)].map(f=>(
               <button key={f} onClick={()=>setCompanionFilter(p=>p.includes(f)?p.filter(x=>x!==f):[...p,f])}
                 className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${companionFilter.includes(f)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"}`}>{f}</button>
             ))}
@@ -704,7 +727,7 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
                         {v.done?"✓ Visited":"Mark Visited"}
                       </button>
                     </div>
-                    <CompanionChips companions={v.companions} onChange={(c)=>onSetCompanions(d.id, date, c)}/>
+                    <CompanionChips companions={v.companions} onChange={(c)=>onSetCompanions(d.id, date, c)} availableCompanions={availableCompanions||COMPANIONS}/>
                   </div>
                 );
               })}
@@ -726,7 +749,7 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
                         </div>
                         <button onClick={()=>onToggleActual(d.id, date)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-700">✓ Visited</button>
                       </div>
-                      <CompanionChips companions={v.companions} onChange={(c)=>onSetCompanions(d.id, date, c)}/>
+                      <CompanionChips companions={v.companions} onChange={(c)=>onSetCompanions(d.id, date, c)} availableCompanions={availableCompanions||COMPANIONS}/>
                     </div>
                   );
                 })}
@@ -1470,7 +1493,12 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
    MAIN APP
 ══════════════════════════════════ */
 function App() {
-  const [data, setData]       = useState({doctors:[], tourplan:{}, actual:{}, bizplan:{}, bizFieldDefs:[], crmplan:{}});
+  const [data, setData]       = useState({doctors:[], bizplan:{}, bizFieldDefs:[], crmplan:{}});
+  const [usersData, setUsersData] = useState({
+    amit:  {tourplan:{}, actual:{}},
+    nitu:  {tourplan:{}, actual:{}},
+    nihit: {tourplan:{}, actual:{}},
+  });
   const [loaded, setLoaded]   = useState(false);
   const [syncSt, setSyncSt]   = useState("connecting");
   const [tab, setTab]         = useState("tourplan");
@@ -1484,147 +1512,236 @@ function App() {
   const [bpMonth, setBpMonth] = useState("2026-06");
   const [cpMonth, setCpMonth] = useState("2026-06");
 
-  useEffect(() => {
-    const ref = DB.ref(DB_PATH);
-    ref.on("value", snap => {
+  const [currentUserId, setCurrentUserId] = useState(function(){
+    try { return localStorage.getItem("aldan_beat_user")||"amit"; } catch(e){ return "amit"; }
+  });
+  const [userModal, setUserModal] = useState(false);
+  const [pinInput, setPinInput]   = useState("");
+  const [pinOk, setPinOk]         = useState(false);
+
+  const currentUser        = USERS.find(function(u){ return u.id===currentUserId; }) || USERS[0];
+  const availableCompanions = USER_COMPANIONS[currentUserId] || USER_COMPANIONS.amit;
+  const currentTP           = ((usersData[currentUserId])||{}).tourplan || {};
+  const currentActual       = ((usersData[currentUserId])||{}).actual   || {};
+
+  useEffect(function() {
+    var ref = DB.ref(DB_PATH);
+    ref.on("value", function(snap) {
       try {
-        const raw = snap.val();
+        var raw = snap.val();
         if (raw === null) {
-          ref.set(SEED_DATA()).catch(console.error);
+          var seed = SEED_DATA();
+          var seedUp = {};
+          seedUp["alderma/v1/doctors"]              = seed.doctors;
+          seedUp["alderma/v1/bizFieldDefs"]         = seed.bizFieldDefs;
+          seedUp["alderma/v1/bizplan"]              = {};
+          seedUp["alderma/v1/crmplan"]              = {};
+          seedUp["alderma/v1/users/amit/tourplan"]  = seed.tourplan;
+          seedUp["alderma/v1/users/amit/actual"]    = {};
+          seedUp["alderma/v1/users/nitu/tourplan"]  = {};
+          seedUp["alderma/v1/users/nitu/actual"]    = {};
+          seedUp["alderma/v1/users/nihit/tourplan"] = {};
+          seedUp["alderma/v1/users/nihit/actual"]   = {};
+          DB.ref().update(seedUp).catch(console.error);
         } else {
           setData({
-            doctors: toArr(raw.doctors),
-            tourplan: toObj(raw.tourplan),
-            actual: toObj(raw.actual),
-            bizplan: toObj(raw.bizplan),
-            bizFieldDefs: toArr(raw.bizFieldDefs),
-            crmplan: toObj(raw.crmplan),
+            doctors:     toArr(raw.doctors),
+            bizplan:     toObj(raw.bizplan),
+            bizFieldDefs:toArr(raw.bizFieldDefs),
+            crmplan:     toObj(raw.crmplan),
           });
-          setLoaded(true);
-          setSyncSt("synced");
+          var rawUsers = toObj(raw.users);
+          function getUD(uid2) {
+            var u = rawUsers[uid2] || {};
+            return { tourplan: toObj(u.tourplan), actual: toObj(u.actual) };
+          }
+          var amitUD = getUD("amit");
+          var hasAmitTP = Object.keys(amitUD.tourplan).length > 0;
+          var hasAmitAc = Object.keys(amitUD.actual).length > 0;
+          if (!hasAmitTP && !hasAmitAc && (raw.tourplan || raw.actual)) {
+            var mig = {};
+            if (raw.tourplan) mig["alderma/v1/users/amit/tourplan"] = raw.tourplan;
+            if (raw.actual)   mig["alderma/v1/users/amit/actual"]   = raw.actual;
+            DB.ref().update(mig).catch(console.error);
+          } else {
+            setUsersData({ amit: getUD("amit"), nitu: getUD("nitu"), nihit: getUD("nihit") });
+            setLoaded(true);
+            setSyncSt("synced");
+          }
         }
-      } catch (err) {
-        console.error("Read error:", err);
-        setSyncSt("error"); setLoaded(true);
-      }
-    }, err => { console.error(err); setSyncSt("error"); setLoaded(true); });
-    return () => ref.off();
+      } catch(err) { console.error("Read error:", err); setSyncSt("error"); setLoaded(true); }
+    }, function(err) { console.error(err); setSyncSt("error"); setLoaded(true); });
+    return function() { ref.off(); };
   }, []);
 
-  const save = (next) => {
+  var saveMulti = function(updates) {
     setSyncSt("saving");
-    DB.ref(DB_PATH).set(next).then(()=>setSyncSt("synced")).catch(e=>{console.error(e); setSyncSt("error");});
+    DB.ref().update(updates).then(function(){setSyncSt("synced");}).catch(function(e){console.error(e);setSyncSt("error");});
   };
 
-  const notify = (msg, c="green") => { setToast({msg,c}); setTimeout(()=>setToast(null),2600); };
-  const ask = (msg, onOk) => setConfirm({msg, onOk:()=>{onOk(); setConfirm(null);}});
+  var notify = function(msg, c) { c=c||"green"; setToast({msg,c}); setTimeout(function(){setToast(null);},2600); };
+  var ask    = function(msg, onOk) { setConfirm({msg, onOk:function(){onOk(); setConfirm(null);}}); };
 
-  const saveDoctors = (list) => save({...data, doctors:list});
+  var saveDoctors = function(list) { saveMulti({"alderma/v1/doctors": list}); };
 
-  const toggleTourplan = (docId, day) => {
-    const tp = JSON.parse(JSON.stringify(data.tourplan));
+  var toggleTourplan = function(docId, day) {
+    var tp = JSON.parse(JSON.stringify(currentTP));
     if (!tp[tpMonth]) tp[tpMonth] = {};
     if (!tp[tpMonth][docId]) tp[tpMonth][docId] = {};
     tp[tpMonth][docId][day] = !tp[tpMonth][docId][day];
     if (!tp[tpMonth][docId][day]) delete tp[tpMonth][docId][day];
-    save({...data, tourplan:tp});
+    var u = {}; u["alderma/v1/users/"+currentUserId+"/tourplan"] = tp;
+    saveMulti(u);
   };
 
-  /* Add multiple doctors to TP — if daily mode, mark them for current day; else just add to month plan (day 1 placeholder) */
-  const addDoctorsToTP = (ids, day, isDaily) => {
-    const tp = JSON.parse(JSON.stringify(data.tourplan));
-    if (!tp[tpMonth]) tp[tpMonth] = {};
-    ids.forEach(id => {
-      if (!tp[tpMonth][id]) tp[tpMonth][id] = {};
-      if (isDaily) tp[tpMonth][id][day] = true;
-      // if grid mode, just ensure entry exists — user taps cells to plan
+  var addDoctorsToTP = function(ids, day, isDaily, companions) {
+    var compUids = (companions||[]).map(function(c){ return COMPANION_TO_USER[c]; }).filter(Boolean);
+    var targetIds = Array.from(new Set([currentUserId].concat(compUids)));
+    var updates = {};
+    targetIds.forEach(function(uid2) {
+      var tp = JSON.parse(JSON.stringify(((usersData[uid2])||{}).tourplan || {}));
+      if (!tp[tpMonth]) tp[tpMonth] = {};
+      ids.forEach(function(id) {
+        if (!tp[tpMonth][id]) tp[tpMonth][id] = {};
+        if (isDaily) tp[tpMonth][id][day] = true;
+      });
+      updates["alderma/v1/users/"+uid2+"/tourplan"] = tp;
     });
-    save({...data, tourplan:tp});
+    saveMulti(updates);
   };
 
-  const removeDoctorFromTP = (docId) => {
-    const tp = JSON.parse(JSON.stringify(data.tourplan));
+  var removeDoctorFromTP = function(docId) {
+    var tp = JSON.parse(JSON.stringify(currentTP));
     if (tp[tpMonth]) delete tp[tpMonth][docId];
-    save({...data, tourplan:tp});
+    var u = {}; u["alderma/v1/users/"+currentUserId+"/tourplan"] = tp;
+    saveMulti(u);
   };
 
-  const toggleActual = (docId, day, force) => {
-    const ac = JSON.parse(JSON.stringify(data.actual));
+  var toggleActual = function(docId, day, force) {
+    var updates = {};
+    var ac = JSON.parse(JSON.stringify(currentActual));
     if (!ac[avMonth]) ac[avMonth] = {};
     if (!ac[avMonth][docId]) ac[avMonth][docId] = {};
-    const cur = visitOf(ac[avMonth][docId][day]);
-    const nextDone = force ? true : !cur.done;
-    if (!nextDone && cur.companions.length===0) {
-      delete ac[avMonth][docId][day];
-    } else {
-      ac[avMonth][docId][day] = {done: nextDone, companions: cur.companions};
-    }
-    save({...data, actual:ac});
-  };
-
-  const setCompanions = (docId, day, companions) => {
-    const ac = JSON.parse(JSON.stringify(data.actual));
-    if (!ac[avMonth]) ac[avMonth] = {};
-    if (!ac[avMonth][docId]) ac[avMonth][docId] = {};
-    const cur = visitOf(ac[avMonth][docId][day]);
-    if (!cur.done && companions.length===0) {
-      delete ac[avMonth][docId][day];
-    } else {
-      ac[avMonth][docId][day] = {done: cur.done, companions};
-    }
-    save({...data, actual:ac});
-  };
-
-  const clearPlan = (docId) => {
-    const tp = JSON.parse(JSON.stringify(data.tourplan));
-    if (tp[avMonth]) delete tp[avMonth][docId];
-    save({...data, tourplan:tp});
-  };
-
-  const saveBizEntry = (docId, form) => {
-    const bp = JSON.parse(JSON.stringify(data.bizplan));
-    if (!bp[bpMonth]) bp[bpMonth] = {};
-    bp[bpMonth][docId] = form;
-    let next = {...data, bizplan:bp};
-    // Sync CRM Yes/No + amt to doctor master, and create/update a CRM Plan entry if CRM=Yes
-    if (form.crmYN === "Yes" || form.crmYN === "No") {
-      next.doctors = next.doctors.map(d => d.id===docId ? {...d, crmYN: form.crmYN, crmAmt: Number(form.crmAmt)||0, priority: form.priority||d.priority} : d);
-      if (form.crmYN === "Yes" && form.tentativeCrmMonth) {
-        const doc = next.doctors.find(d=>d.id===docId);
-        const cpKey = form.tentativeCrmMonth;
-        const cpList = toArr(next.crmplan[cpKey]);
-        const existingIdx = cpList.findIndex(e=>e.doctorId===docId);
-        const entry = {
-          id: existingIdx>=0 ? cpList[existingIdx].id : uid(),
-          doctorId: docId, doctorName: doc.name, mdl: doc.mdl||"", area: doc.area,
-          crmPlanDate: existingIdx>=0 ? cpList[existingIdx].crmPlanDate : `${cpKey}-01`,
-          crmAmt: Number(form.crmAmt)||0,
-          tentativeBizPM: Number(form.tentativeBiz)||0,
-          actualMonth: existingIdx>=0 ? cpList[existingIdx].actualMonth : "",
-        };
-        const nextList = existingIdx>=0 ? cpList.map((e,i)=>i===existingIdx?entry:e) : [...cpList, entry];
-        next.crmplan = {...next.crmplan, [cpKey]: nextList};
+    var cur = visitOf(ac[avMonth][docId][day]);
+    var nextDone = force ? true : !cur.done;
+    if (!nextDone && cur.companions.length===0) { delete ac[avMonth][docId][day]; }
+    else { ac[avMonth][docId][day] = {done: nextDone, companions: cur.companions}; }
+    updates["alderma/v1/users/"+currentUserId+"/actual"] = ac;
+    cur.companions.forEach(function(c) {
+      var cuid = COMPANION_TO_USER[c];
+      if (!cuid) return;
+      var cac = JSON.parse(JSON.stringify(((usersData[cuid])||{}).actual || {}));
+      if (!cac[avMonth]) cac[avMonth] = {};
+      if (!cac[avMonth][docId]) cac[avMonth][docId] = {};
+      var myLabel = USER_COMPANION_LABEL[currentUserId] || currentUser.name;
+      if (!nextDone) {
+        var excv = visitOf(cac[avMonth][docId][day]);
+        var newC = excv.companions.filter(function(x){ return x!==myLabel; });
+        if (!excv.done && newC.length===0) { delete cac[avMonth][docId][day]; }
+        else { cac[avMonth][docId][day] = {done: excv.done, companions: newC}; }
+      } else {
+        var excv2 = visitOf(cac[avMonth][docId][day]);
+        var newC2 = excv2.companions.includes(myLabel) ? excv2.companions : excv2.companions.concat([myLabel]);
+        cac[avMonth][docId][day] = {done: true, companions: newC2};
       }
-    } else if (form.priority) {
-      next.doctors = next.doctors.map(d => d.id===docId ? {...d, priority: form.priority} : d);
+      updates["alderma/v1/users/"+cuid+"/actual"] = cac;
+    });
+    saveMulti(updates);
+  };
+
+  var setCompanions = function(docId, day, companions) {
+    var updates = {};
+    var ac = JSON.parse(JSON.stringify(currentActual));
+    if (!ac[avMonth]) ac[avMonth] = {};
+    if (!ac[avMonth][docId]) ac[avMonth][docId] = {};
+    var cur = visitOf(ac[avMonth][docId][day]);
+    var prevComps = cur.companions;
+    if (!cur.done && companions.length===0) { delete ac[avMonth][docId][day]; }
+    else { ac[avMonth][docId][day] = {done: cur.done, companions: companions}; }
+    updates["alderma/v1/users/"+currentUserId+"/actual"] = ac;
+    var myLabel = USER_COMPANION_LABEL[currentUserId] || currentUser.name;
+    var added   = companions.filter(function(c){ return !prevComps.includes(c); });
+    var removed = prevComps.filter(function(c){ return !companions.includes(c); });
+    Array.from(new Set(added.concat(removed))).forEach(function(c) {
+      var cuid = COMPANION_TO_USER[c];
+      if (!cuid) return;
+      var cac = JSON.parse(JSON.stringify(((usersData[cuid])||{}).actual || {}));
+      if (!cac[avMonth]) cac[avMonth] = {};
+      if (!cac[avMonth][docId]) cac[avMonth][docId] = {};
+      var excv = visitOf(cac[avMonth][docId][day]);
+      if (companions.includes(c)) {
+        if (cur.done) {
+          var nc = excv.companions.includes(myLabel) ? excv.companions : excv.companions.concat([myLabel]);
+          cac[avMonth][docId][day] = {done: true, companions: nc};
+        }
+      } else {
+        var nc2 = excv.companions.filter(function(x){ return x!==myLabel; });
+        if (!excv.done && nc2.length===0) { delete cac[avMonth][docId][day]; }
+        else { cac[avMonth][docId][day] = {done: excv.done, companions: nc2}; }
+      }
+      updates["alderma/v1/users/"+cuid+"/actual"] = cac;
+    });
+    saveMulti(updates);
+  };
+
+  var clearPlan = function(docId) {
+    var tp = JSON.parse(JSON.stringify(currentTP));
+    if (tp[avMonth]) delete tp[avMonth][docId];
+    var u = {}; u["alderma/v1/users/"+currentUserId+"/tourplan"] = tp;
+    saveMulti(u);
+  };
+
+  var saveBizEntry = function(docId, form) {
+    var updates = {};
+    updates["alderma/v1/bizplan/"+bpMonth+"/"+docId] = form;
+    var newDocs = data.doctors.map(function(d){ return d.id===docId ? Object.assign({},d,{crmYN:form.crmYN||d.crmYN,crmAmt:Number(form.crmAmt)||d.crmAmt,priority:form.priority||d.priority}) : d; });
+    updates["alderma/v1/doctors"] = newDocs;
+    if (form.crmYN==="Yes" && form.tentativeCrmMonth) {
+      var cpKey = form.tentativeCrmMonth;
+      var cpList = toArr(data.crmplan[cpKey]);
+      var doc = newDocs.find(function(d){ return d.id===docId; });
+      var ei = cpList.findIndex(function(e){ return e.doctorId===docId; });
+      var entry = {
+        id: ei>=0 ? cpList[ei].id : uid(),
+        doctorId: docId, doctorName: doc?doc.name:"", mdl: doc?doc.mdl||"":"", area: doc?doc.area||"":"",
+        crmPlanDate: ei>=0 ? cpList[ei].crmPlanDate : cpKey+"-01",
+        crmAmt: Number(form.crmAmt)||0, tentativeBizPM: Number(form.tentativeBiz)||0,
+        actualMonth: ei>=0 ? cpList[ei].actualMonth : "",
+      };
+      updates["alderma/v1/crmplan/"+cpKey] = ei>=0 ? cpList.map(function(e,i){ return i===ei?entry:e; }) : cpList.concat([entry]);
     }
-    save(next);
+    saveMulti(updates);
+    notify("Business plan updated!");
   };
 
-  const addBizField = (field) => save({...data, bizFieldDefs:[...data.bizFieldDefs, field]});
+  var addBizField = function(field) { saveMulti({"alderma/v1/bizFieldDefs": data.bizFieldDefs.concat([field])}); };
 
-  const saveCrm = (list, monthKey) => {
-    const cp = {...data.crmplan, [monthKey||cpMonth]: list};
-    save({...data, crmplan:cp});
+  var saveCrm = function(list, monthKey) {
+    var u = {}; u["alderma/v1/crmplan/"+(monthKey||cpMonth)] = list;
+    saveMulti(u);
   };
 
-  const saveDoctorPriority = (docId, priority) => {
-    save({...data, doctors: data.doctors.map(d=>d.id===docId?{...d,priority}:d)});
+  var saveDoctorPriority = function(docId, priority) {
+    saveMulti({"alderma/v1/doctors": data.doctors.map(function(d){ return d.id===docId?Object.assign({},d,{priority}):d; })});
   };
 
-  const tryAdminLogin = () => {
+  var tryAdminLogin = function() {
     if (pwInput === ADMIN_PASS) { setIsAdmin(true); setAdminModal(false); setPwInput(""); notify("Admin mode unlocked"); }
     else { notify("Wrong password","red"); }
+  };
+
+  var tryPin = function() {
+    if (pinInput===USER_PIN) { setPinOk(true); notify("PIN accepted"); }
+    else { notify("Wrong PIN","red"); setPinInput(""); }
+  };
+
+  var tryUserSwitch = function(newId) {
+    if (pinOk) {
+      setCurrentUserId(newId);
+      try { localStorage.setItem("aldan_beat_user", newId); } catch(e){}
+      setUserModal(false); setPinInput(""); setPinOk(false);
+      notify("Switched to "+(USERS.find(function(u){ return u.id===newId; })||{}).name);
+    } else { notify("Enter PIN first","red"); }
   };
 
   const TABS = [
@@ -1651,10 +1768,9 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       {toast && (
-        <div className={`fixed top-4 right-4 z-[100] px-4 py-2.5 rounded-xl text-white text-sm font-bold shadow-xl
-          ${toast.c==="green"?"bg-emerald-500":toast.c==="red"?"bg-red-500":"bg-teal-500"}`}>{toast.msg}</div>
+        <div className={`fixed top-4 right-4 z-[100] px-4 py-2.5 rounded-xl text-white text-sm font-bold shadow-xl ${toast.c==="green"?"bg-emerald-500":toast.c==="red"?"bg-red-500":"bg-teal-500"}`}>{toast.msg}</div>
       )}
-      <Confirm open={!!confirm} msg={confirm ? confirm.msg : ""} onOk={confirm ? confirm.onOk : null} onCancel={()=>setConfirm(null)}/>
+      <Confirm open={!!confirm} msg={confirm ? confirm.msg : ""} onOk={confirm ? confirm.onOk : null} onCancel={function(){setConfirm(null);}}/>
 
       <nav className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-sm flex-wrap gap-2">
         <div>
@@ -1665,41 +1781,77 @@ function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-1 rounded-full font-semibold
-            ${syncSt==="synced"?"bg-emerald-100 text-emerald-700":syncSt==="saving"?"bg-amber-100 text-amber-700":"bg-red-100 text-red-600"}`}>
+          <span className={`text-xs px-2 py-1 rounded-full font-semibold ${syncSt==="synced"?"bg-emerald-100 text-emerald-700":syncSt==="saving"?"bg-amber-100 text-amber-700":"bg-red-100 text-red-600"}`}>
             {syncSt==="synced"?"● Live":syncSt==="saving"?"⟳ Saving":"✕ Error"}
           </span>
+          <button onClick={function(){setUserModal(true);setPinInput("");setPinOk(false);}}
+            className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-bold">
+            👤 {currentUser.name}
+          </button>
           {isAdmin
-            ? <button onClick={()=>setIsAdmin(false)} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">🔓 Admin Mode</button>
-            : <button onClick={()=>setAdminModal(true)} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold">🔒 Rep Mode</button>}
+            ? <button onClick={function(){setIsAdmin(false);}} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">🔓 Admin</button>
+            : <button onClick={function(){setAdminModal(true);}} className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-bold">🔒</button>}
         </div>
       </nav>
 
       <div className="max-w-6xl mx-auto px-4 py-5 pb-24">
-        {tab==="doctors" && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
-        {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={data.tourplan} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan} onAddDoctorsToTP={addDoctorsToTP} onRemoveDoctorFromTP={removeDoctorFromTP}/>}
-        {tab==="actual" && <ActualVisitsTab doctors={data.doctors} tourplan={data.tourplan} actual={data.actual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"}/>}
-        {tab==="bizplan" && <BusinessPlanTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} month={bpMonth} setMonth={setBpMonth} onSaveEntry={saveBizEntry} onAddField={addBizField} isAdmin={isAdmin} notify={notify}/>}
-        {tab==="crmplan" && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} onSavePriority={saveDoctorPriority} notify={notify} ask={ask}/>}
-        {tab==="reports" && <ReportsTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} crmplan={data.crmplan}/>}
+        {tab==="doctors"  && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
+        {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={currentTP} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan} onAddDoctorsToTP={addDoctorsToTP} onRemoveDoctorFromTP={removeDoctorFromTP} availableCompanions={availableCompanions}/>}
+        {tab==="actual"   && <ActualVisitsTab doctors={data.doctors} tourplan={currentTP} actual={currentActual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"} availableCompanions={availableCompanions}/>}
+        {tab==="bizplan"  && <BusinessPlanTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} month={bpMonth} setMonth={setBpMonth} onSaveEntry={saveBizEntry} onAddField={addBizField} isAdmin={isAdmin} notify={notify}/>}
+        {tab==="crmplan"  && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} onSavePriority={saveDoctorPriority} notify={notify} ask={ask}/>}
+        {tab==="reports"  && <ReportsTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} crmplan={data.crmplan}/>}
       </div>
 
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 flex" style={{boxShadow:"0 -2px 10px rgba(0,0,0,0.05)"}}>
-        {TABS.map(([t,icon,lbl])=>(
-          <button key={t} onClick={()=>setTab(t)} className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 ${tab===t?"text-teal-700":"text-gray-400"}`}>
+        {TABS.map(function([t,icon,lbl]){ return (
+          <button key={t} onClick={function(){setTab(t);}} className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 ${tab===t?"text-teal-700":"text-gray-400"}`}>
             <span className="text-base leading-none">{icon}</span>
             <span className="text-[9px] font-bold leading-none">{lbl}</span>
           </button>
-        ))}
+        );})}
       </nav>
 
-      <Modal open={adminModal} onClose={()=>setAdminModal(false)} title="🔒 Admin Login">
+      <Modal open={userModal} onClose={function(){setUserModal(false);setPinInput("");setPinOk(false);}} title="👤 Switch User">
+        <div className="space-y-4">
+          {!pinOk ? (
+            <div>
+              <Fld label="Enter PIN to unlock">
+                <input type="password" value={pinInput} onChange={function(e){setPinInput(e.target.value);}}
+                  onKeyDown={function(e){if(e.key==="Enter")tryPin();}} className={INP} autoFocus placeholder="4-digit PIN"/>
+              </Fld>
+              <div className="flex gap-3 pt-3">
+                <button onClick={function(){setUserModal(false);setPinInput("");}} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold">Cancel</button>
+                <button onClick={tryPin} disabled={!pinInput} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold disabled:opacity-40">Unlock</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-xs text-gray-400 mb-3">Select user to switch to:</p>
+              <div className="space-y-2">
+                {USERS.map(function(u){ return (
+                  <button key={u.id} onClick={function(){tryUserSwitch(u.id);}}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-left ${currentUserId===u.id?"border-teal-300 bg-teal-50":"border-gray-100 bg-gray-50 hover:bg-gray-100"}`}>
+                    <div>
+                      <p className="font-bold text-gray-800">{u.name}</p>
+                      <p className="text-xs text-gray-400">{u.role}</p>
+                    </div>
+                    {currentUserId===u.id && <span className="text-teal-600 font-bold text-xs">Current</span>}
+                  </button>
+                );})}
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      <Modal open={adminModal} onClose={function(){setAdminModal(false);}} title="🔒 Admin Login">
         <div className="space-y-4">
           <Fld label="Admin Password">
-            <input type="password" value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&tryAdminLogin()} className={INP} autoFocus/>
+            <input type="password" value={pwInput} onChange={function(e){setPwInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter")tryAdminLogin();}} className={INP} autoFocus/>
           </Fld>
           <div className="flex gap-3">
-            <button onClick={()=>setAdminModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+            <button onClick={function(){setAdminModal(false);}} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
             <button onClick={tryAdminLogin} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">Unlock</button>
           </div>
         </div>
@@ -1709,6 +1861,8 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+
+
 </script>
 </body>
 </html>
