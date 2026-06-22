@@ -1904,6 +1904,7 @@ function App() {
           <span className={`text-xs px-2 py-1 rounded-full font-semibold ${syncSt==="synced"?"bg-emerald-100 text-emerald-700":syncSt==="saving"?"bg-amber-100 text-amber-700":"bg-red-100 text-red-600"}`}>
             {syncSt==="synced"?"● Live":syncSt==="saving"?"⟳ Saving":"✕ Error"}
           </span>
+          <button onClick={function(){window.location.reload(true);}} title="Force refresh" className="text-gray-400 hover:text-teal-600 text-base font-bold px-1">↻</button>
           <button onClick={function(){setUserModal(true);setPinInput("");setPinOk(false);}}
             className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-bold">
             👤 {currentUser.name}
