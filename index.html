@@ -6,10 +6,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
   <style>
-    html, body, #root { height: 100%; margin: 0; }
-    body { overscroll-behavior: none; touch-action: pan-y; }
-    .overflow-x-auto { touch-action: pan-x pinch-zoom; }
-    * { -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; margin: 0; padding: 0; }
+    body { overscroll-behavior: none; }
+    #root { height: 100%; }
+    .overflow-x-auto { -webkit-overflow-scrolling: touch; }
   </style>
   <title>🩺 Aldan Beat Tracker — Alderma</title>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -1894,7 +1894,7 @@ function App() {
   );
 
   return (
-    <div className="bg-gray-50" style={{display:"flex",flexDirection:"column",height:"100%",minHeight:"100dvh"}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,display:"flex",flexDirection:"column",background:"#f9fafb"}}>
       {toast && (
         <div className={`fixed top-4 right-4 z-[100] px-4 py-2.5 rounded-xl text-white text-sm font-bold shadow-xl ${toast.c==="green"?"bg-emerald-500":toast.c==="red"?"bg-red-500":"bg-teal-500"}`}>{toast.msg}</div>
       )}
@@ -1923,7 +1923,7 @@ function App() {
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-4 py-5" style={{flex:"1 1 0",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div className="max-w-6xl mx-auto px-4 py-5 w-full" style={{flex:"1 1 0",overflowY:"auto",overflowX:"hidden",boxSizing:"border-box"}}>
         {tab==="doctors"  && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
         {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={currentTP} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan} onAddDoctorsToTP={addDoctorsToTP} onRemoveDoctorFromTP={removeDoctorFromTP} onSetTPCompanions={setTPCompanions} availableCompanions={availableCompanions}/>}
         {tab==="actual"   && <ActualVisitsTab doctors={data.doctors} tourplan={currentTP} actual={currentActual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"} availableCompanions={availableCompanions}/>}
