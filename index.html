@@ -418,8 +418,8 @@ function DoctorMasterTab({doctors, isAdmin, onSave, notify, ask}) {
 function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctorsToTP, onRemoveDoctorFromTP, onSetTPCompanions, availableCompanions}) {
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState("All");
-  const [tpView, setTpView] = useState("grid"); // grid | daily
-  const [date, setDate] = useState(1);
+  const [tpView, setTpView] = useState("daily"); // grid | daily
+  const [date, setDate] = useState(function(){ return new Date().getDate(); });
   const [addOpen, setAddOpen] = useState(false);
   const [companionFilter, setCompanionFilter] = useState([]);
 
