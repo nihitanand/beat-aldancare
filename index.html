@@ -10,6 +10,7 @@
   <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body class="bg-gray-50">
 <div id="root"></div>
@@ -93,7 +94,7 @@ const ALDERMA_PRODUCTS = [
   "SOMOIST CREAM","MELALUX CREAM","ACNIGEL-S CREAM",
 ];
 const COMPANIONS = ["Nitu Kumari (Manager)","Director"];
-const APP_VERSION = "v1.1";
+const APP_VERSION = "v1.2";
 
 const SEED_BIZFIELDS = [
   {key:"tentativeBiz", label:"Tentative Business (Rs.)", type:"number"},
@@ -158,6 +159,105 @@ function MonthPicker({value,onChange}) {
 function PriBadge({p}) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${PRI_COLOR[p]||PRI_COLOR.Medium}`}>{p||"Medium"}</span>;
 }
+
+/* ══════════════════════════════════
+   MULTI-SELECT DOCTOR PICKER
+══════════════════════════════════ */
+function MultiSelectPicker({doctors, onConfirm, onClose, title}) {
+  const [search, setSearch] = useState("");
+  const [sel, setSel] = useState(new Set());
+  const areas = useMemo(()=>Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))),[doctors]);
+  const [areaF, setAreaF] = useState("All");
+  const toggle = (id) => setSel(p=>{ const n=new Set(p); n.has(id)?n.delete(id):n.add(id); return n; });
+  const filtered = doctors.filter(d=>(areaF==="All"||d.area===areaF)&&d.name.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-center p-4 overflow-y-auto" style={{background:"rgba(15,23,42,0.72)"}}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md my-6">
+        <div className="flex justify-between items-center px-5 pt-5 pb-3 border-b border-gray-100">
+          <h2 className="text-sm font-bold text-gray-800">{title||"Select Doctors"}</h2>
+          <button onClick={onClose} className="text-gray-300 hover:text-gray-700 text-xl font-bold">✕</button>
+        </div>
+        <div className="px-4 pt-3 pb-2 space-y-2">
+          <input placeholder="Search name or MDL…" value={search} onChange={e=>setSearch(e.target.value)} className={INP} autoFocus/>
+          <div className="flex gap-1.5 flex-wrap">
+            <button onClick={()=>setAreaF("All")} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${areaF==="All"?"bg-teal-600 text-white border-teal-600":"bg-white text-gray-400 border-gray-200"}`}>All</button>
+            {areas.map(a=><button key={a} onClick={()=>setAreaF(a)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${areaF===a?"bg-teal-600 text-white border-teal-600":"bg-white text-gray-400 border-gray-200"}`}>{a}</button>)}
+          </div>
+          {sel.size>0 && <p className="text-xs text-teal-700 font-bold">{sel.size} selected</p>}
+        </div>
+        <div className="max-h-60 overflow-y-auto divide-y divide-gray-50 border-t border-gray-100">
+          {filtered.slice(0,60).map(d=>(
+            <button key={d.id} onClick={()=>toggle(d.id)}
+              className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-3 ${sel.has(d.id)?"bg-teal-50":""}`}>
+              <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${sel.has(d.id)?"bg-teal-600 border-teal-600 text-white":"border-gray-300"}`}>{sel.has(d.id)&&"✓"}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-semibold text-gray-700">{d.name}</span>
+                <span className="text-xs text-gray-400 ml-2">{d.area} · {d.mdl||"—"}</span>
+              </div>
+            </button>
+          ))}
+          {filtered.length===0 && <p className="text-center py-6 text-gray-300 text-sm">No doctors found</p>}
+        </div>
+        <div className="flex gap-3 px-4 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+          <button onClick={()=>{onConfirm(Array.from(sel)); onClose();}} disabled={sel.size===0}
+            className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700 disabled:opacity-40">
+            Add {sel.size>0?`(${sel.size})`:""}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════
+   WHATSAPP SHARE HELPERS
+══════════════════════════════════ */
+const fmtShareDate = (mk, day) => {
+  const [y,m] = mk.split("-").map(Number);
+  const d = new Date(y, m-1, day);
+  return d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"});
+};
+const fmtNow = () => new Date().toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:true});
+
+const buildTPShareMsg = (doctors, monthDocs, month, day, companionFilter) => {
+  const planned = doctors.filter(d=>!!toObj(monthDocs[d.id])[day]);
+  const dateStr = `${fmtShareDate(month,day)} · ${fmtNow()}`;
+  const compLine = companionFilter.length===0 ? "📍 Independent" : `👥 With: ${companionFilter.join(", ")}`;
+  const list = planned.map((d,i)=>`${i+1}. ${d.name} | MDL ${d.mdl||"—"} | ${d.area}`).join("\n");
+  return `🗓️ TOUR PLAN · ${dateStr}\n${compLine}\n\n${list||"(no doctors planned)"}\n\nTotal Planned: ${planned.length}\nGenerated by Aldan Beat`;
+};
+
+const buildActualShareMsg = (doctors, monthPlan, monthActual, month, day) => {
+  const dateStr = `${fmtShareDate(month,day)} · ${fmtNow()}`;
+  const plannedIds = new Set(doctors.filter(d=>!!toObj(monthPlan[d.id])[day]).map(d=>d.id));
+  const allVisited = doctors.filter(d=>!!visitOf(toObj(monthActual[d.id])[day]).done);
+  const plannedVisited = allVisited.filter(d=>plannedIds.has(d.id));
+  const unplanned = allVisited.filter(d=>!plannedIds.has(d.id));
+  // companions from first visited doctor (or empty)
+  const anyVisit = allVisited.length ? visitOf(toObj(monthActual[allVisited[0].id])[day]) : {companions:[]};
+  const compLine = anyVisit.companions.length===0 ? "📍 Independent" : `👥 With: ${anyVisit.companions.join(", ")}`;
+  let msg = `✅ ACTUAL VISITS · ${dateStr}\n${compLine}\n`;
+  if (plannedVisited.length) {
+    msg += `\nPLANNED VISITS (${plannedVisited.length})\n`;
+    msg += plannedVisited.map((d,i)=>`${i+1}. ${d.name} | MDL ${d.mdl||"—"} | ${d.area}`).join("\n");
+  }
+  if (unplanned.length) {
+    msg += `\n\nUNPLANNED VISITS (${unplanned.length})\n`;
+    msg += unplanned.map((d,i)=>`${plannedVisited.length+i+1}. ${d.name} | MDL ${d.mdl||"—"} | ${d.area}`).join("\n");
+  }
+  msg += `\n\nTotal: ${allVisited.length} | Planned: ${plannedVisited.length} | Unplanned: ${unplanned.length}`;
+  msg += `\nGenerated by Aldan Beat`;
+  return msg;
+};
+
+const shareToWA = (text) => {
+  if (navigator.share) {
+    navigator.share({title:"Aldan Beat", text}).catch(()=>{});
+  } else {
+    window.open("https://wa.me/?text="+encodeURIComponent(text),"_blank");
+  }
+};
 
 /* ══════════════════════════════════
    TAB: DOCTOR MASTER
@@ -276,9 +376,13 @@ function DoctorMasterTab({doctors, isAdmin, onSave, notify, ask}) {
 /* ══════════════════════════════════
    TAB: TOUR PLAN (month-wise)
 ══════════════════════════════════ */
-function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
+function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctorsToTP, onRemoveDoctorFromTP}) {
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState("All");
+  const [tpView, setTpView] = useState("grid"); // grid | daily
+  const [date, setDate] = useState(1);
+  const [addOpen, setAddOpen] = useState(false);
+  const [companionFilter, setCompanionFilter] = useState([]);
 
   const nDays = daysInMonth(month);
   const days = Array.from({length:nDays}, (_,i)=>i+1);
@@ -290,29 +394,66 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
   const totalCalls = scopeDocs.reduce((s,d)=>s+plannedCount(d.id), 0);
   const workDays = workingDaysInMonth(month);
   const callAvg = workDays ? (totalCalls / workDays).toFixed(1) : "0.0";
-
   const DOC_COL_W = 150, TOT_COL_W = 40;
+
+  const dateStr = `${month}-${String(date).padStart(2,"0")}`;
+  const minDate = `${month}-01`;
+  const maxDate = `${month}-${String(nDays).padStart(2,"0")}`;
+
+  // Daily view data
+  const plannedToday = doctors.filter(d=>!!toObj(monthDocs[d.id])[date]);
+
+  const handleShare = () => {
+    const msg = buildTPShareMsg(doctors, monthDocs, month, date, companionFilter);
+    shareToWA(msg);
+  };
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
-        <MonthPicker value={month} onChange={setMonth}/>
-        <div className="flex gap-1.5 flex-wrap">
-          <button onClick={()=>setAreaSel("All")} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel==="All"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>All Areas</button>
-          {areas.map(a=>(
-            <button key={a} onClick={()=>setAreaSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>{a}</button>
-          ))}
+      {addOpen && <MultiSelectPicker doctors={doctors} title="Add Doctors to Tour Plan"
+        onConfirm={(ids)=>onAddDoctorsToTP(ids, date, tpView==="daily")}
+        onClose={()=>setAddOpen(false)}/>}
+
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <MonthPicker value={month} onChange={setMonth}/>
+          <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+            <button onClick={()=>setTpView("grid")} className={`px-3 py-1.5 rounded-md text-xs font-bold ${tpView==="grid"?"bg-white text-teal-700 shadow-sm":"text-gray-500"}`}>🗓️ Grid</button>
+            <button onClick={()=>setTpView("daily")} className={`px-3 py-1.5 rounded-md text-xs font-bold ${tpView==="daily"?"bg-white text-teal-700 shadow-sm":"text-gray-500"}`}>📋 Daily</button>
+          </div>
+          {tpView==="daily" && (
+            <button onClick={handleShare} className="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">📤 Share</button>
+          )}
         </div>
+
+        {tpView==="daily" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="date" value={dateStr} min={minDate} max={maxDate}
+              onChange={e=>{ const d=Number(e.target.value.split("-")[2]); if(d>=1&&d<=nDays) setDate(d); }}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-teal-700"/>
+            <span className="text-xs text-gray-400">({WD[weekdayOf(month,date)]})</span>
+            <button onClick={()=>setAddOpen(true)} className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Add Doctors</button>
+          </div>
+        )}
+
+        {tpView==="grid" && (
+          <div className="flex gap-1.5 flex-wrap">
+            <button onClick={()=>setAreaSel("All")} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel==="All"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>All Areas</button>
+            {areas.map(a=>(
+              <button key={a} onClick={()=>setAreaSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>{a}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2 mb-3">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
-          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Total Calls Planned</p>
-          <p className="text-lg font-black text-teal-700">{totalCalls}</p>
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Total Planned</p>
+          <p className="text-lg font-black text-teal-700">{tpView==="daily"?plannedToday.length:totalCalls}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
           <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Working Days</p>
-          <p className="text-lg font-black text-gray-700">{workDays}<span className="text-xs font-normal text-gray-400"> (Mon–Sat)</span></p>
+          <p className="text-lg font-black text-gray-700">{workDays}<span className="text-xs font-normal text-gray-400"> (M–S)</span></p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
           <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Call Avg / Day</p>
@@ -320,9 +461,40 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
         </div>
       </div>
 
-      {areaSel==="All" ? (
+      {/* ── DAILY VIEW ── */}
+      {tpView==="daily" && (
         <div>
-          <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · all areas · pick an area above to mark visits (grid view works one area at a time for usability)</p>
+          <div className="flex gap-1.5 flex-wrap mb-3">
+            <span className="text-[10px] font-bold uppercase text-gray-400 self-center mr-1">Companion:</span>
+            {["Independent",...COMPANIONS].map(f=>(
+              <button key={f} onClick={()=>setCompanionFilter(p=>p.includes(f)?p.filter(x=>x!==f):[...p,f])}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${companionFilter.includes(f)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"}`}>{f}</button>
+            ))}
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-4 py-2.5 bg-teal-50 border-b border-teal-100 text-xs font-bold text-teal-700 uppercase">
+              Planned for {date} {monthLabel(month)} ({plannedToday.length})
+            </div>
+            {plannedToday.length===0 && <div className="text-center py-8 text-gray-300 text-sm">No doctors planned · tap "+ Add Doctors" to plan</div>}
+            <div className="divide-y divide-gray-50">
+              {plannedToday.map(d=>(
+                <div key={d.id} className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
+                    <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"} {d.priority==="High"&&<PriBadge p="High"/>}</p>
+                  </div>
+                  <button onClick={()=>onToggle(d.id, date)} className="text-red-400 hover:text-red-600 font-bold text-sm px-2">✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── GRID VIEW ── */}
+      {tpView==="grid" && areaSel==="All" && (
+        <div>
+          <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · all areas · pick an area below to mark visits</p>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
@@ -350,9 +522,14 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
             </table>
           </div>
         </div>
-      ) : (
+      )}
+
+      {tpView==="grid" && areaSel!=="All" && (
         <div>
-          <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {rows.length} doctors in {areaSel} · tap a cell to plan a visit</p>
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-xs text-gray-400">{monthLabel(month)} · {rows.length} doctors in {areaSel}</p>
+            <button onClick={()=>setAddOpen(true)} className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Add Doctors</button>
+          </div>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="text-xs border-collapse">
@@ -367,6 +544,7 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
                         <div>{d}</div><div className="text-[9px] font-normal">{WD[wd]}</div>
                       </th>;
                     })}
+                    <th className="px-2 py-2 text-center font-bold text-gray-400">✕</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -389,13 +567,16 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
                             </td>
                           );
                         })}
+                        <td className="text-center">
+                          <button onClick={()=>onRemoveDoctorFromTP(d.id)} className="text-red-300 hover:text-red-500 font-bold">✕</button>
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            {rows.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors in this area</div>}
+            {rows.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors in this area · tap "+ Add Doctors"</div>}
           </div>
         </div>
       )}
@@ -405,16 +586,23 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle}) {
 
 function CompanionChips({companions, onChange}) {
   const isIndependent = !companions || companions.length===0;
-  const toggle = (name) => {
+  const toggleCompanion = (name) => {
     const set = new Set(companions||[]);
     if (set.has(name)) set.delete(name); else set.add(name);
     onChange(Array.from(set));
   };
   return (
     <div className="flex gap-1.5 flex-wrap">
-      <button onClick={()=>onChange([])} className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${isIndependent?"bg-gray-700 text-white border-gray-700":"bg-white text-gray-400 border-gray-200"}`}>Independent</button>
+      <button onClick={()=>onChange([])}
+        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${isIndependent?"bg-gray-700 text-white border-gray-700":"bg-white text-gray-400 border-gray-200"}`}>
+        Independent
+      </button>
       {COMPANIONS.map(c=>(
-        <button key={c} onClick={()=>toggle(c)} className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${(companions||[]).includes(c)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"}`}>{c}</button>
+        <button key={c} onClick={()=>toggleCompanion(c)}
+          disabled={false}
+          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${(companions||[]).includes(c)?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-400 border-gray-200"} ${isIndependent?"opacity-40 cursor-not-allowed":""}`}>
+          {c}
+        </button>
       ))}
     </div>
   );
@@ -454,9 +642,12 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
   const unplannedVisited = doctors.filter(d => visitedIds.has(String(d.id)) && !doctors.filter(x=>!!toObj(monthPlan[x.id])[date]).find(p=>p.id===d.id) && matchesFilter(d.id));
 
   const [addOpen, setAddOpen] = useState(false);
-  const [addSearch, setAddSearch] = useState("");
   const [gridAddOpen, setGridAddOpen] = useState(false);
-  const [gridAddSearch, setGridAddSearch] = useState("");
+
+  const handleActualShare = () => {
+    const msg = buildActualShareMsg(doctors, monthPlan, monthActual, month, date);
+    shareToWA(msg);
+  };
 
   const dateStr = `${month}-${String(date).padStart(2,"0")}`;
   const minDate = `${month}-01`;
@@ -483,7 +674,8 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
               onChange={e=>{ const d = Number(e.target.value.split("-")[2]); if (d>=1 && d<=nDays) setDate(d); }}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-teal-700"/>
             <span className="text-xs text-gray-400">({WD[weekdayOf(month,date)]})</span>
-            <button onClick={()=>setAddOpen(true)} className="ml-auto bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Unplanned Visit</button>
+            <button onClick={()=>setAddOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Unplanned Visit</button>
+            <button onClick={handleActualShare} className="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">📤 Share</button>
           </div>
 
           <div className="flex gap-1.5 flex-wrap mb-4">
@@ -542,18 +734,9 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
             </div>
           )}
 
-          <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="➕ Log Unplanned Visit">
-            <input placeholder="Search doctor…" value={addSearch} onChange={e=>setAddSearch(e.target.value)} className={INP + " mb-3"} autoFocus/>
-            <div className="max-h-72 overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
-              {doctors.filter(d=>d.name.toLowerCase().includes(addSearch.toLowerCase())).slice(0,40).map(d=>(
-                <button key={d.id} onClick={()=>{onToggleActual(d.id,date,true); setAddOpen(false); setAddSearch("");}}
-                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 flex justify-between items-center">
-                  <span className="text-sm font-semibold text-gray-700">{d.name}</span>
-                  <span className="text-xs text-gray-400">{d.area}</span>
-                </button>
-              ))}
-            </div>
-          </Modal>
+          {addOpen && <MultiSelectPicker doctors={doctors} title="➕ Log Unplanned Visits"
+            onConfirm={(ids)=>{ ids.forEach(id=>onToggleActual(id,date,true)); }}
+            onClose={()=>setAddOpen(false)}/>}
         </div>
       )}
 
@@ -614,18 +797,9 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
             {gridDocs.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors in this area</div>}
           </div>
 
-          <Modal open={gridAddOpen} onClose={()=>setGridAddOpen(false)} title="➕ Add Doctor to Grid">
-            <input placeholder="Search any doctor…" value={gridAddSearch} onChange={e=>setGridAddSearch(e.target.value)} className={INP + " mb-3"} autoFocus/>
-            <div className="max-h-72 overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-xl">
-              {doctors.filter(d=>d.name.toLowerCase().includes(gridAddSearch.toLowerCase())).slice(0,40).map(d=>(
-                <button key={d.id} onClick={()=>{setExtraDocs(p=>p.includes(d.id)?p:[...p,d.id]); setGridAddOpen(false); setGridAddSearch("");}}
-                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 flex justify-between items-center">
-                  <span className="text-sm font-semibold text-gray-700">{d.name}</span>
-                  <span className="text-xs text-gray-400">{d.area}</span>
-                </button>
-              ))}
-            </div>
-          </Modal>
+          {gridAddOpen && <MultiSelectPicker doctors={doctors} title="➕ Add Doctors to Grid"
+            onConfirm={(ids)=>{ setExtraDocs(p=>[...new Set([...p,...ids])]); }}
+            onClose={()=>setGridAddOpen(false)}/>}
         </div>
       )}
     </div>
@@ -639,18 +813,18 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState("All");
   const [search, setSearch]   = useState("");
-  const [modal, setModal]     = useState(null); // doctor id being edited
+  const [modal, setModal]     = useState(null);
   const [form, setForm]       = useState({});
   const [fieldModal, setFieldModal] = useState(false);
   const [newField, setNewField] = useState({label:"", type:"text"});
+  const [bizView, setBizView] = useState("list"); // list | area
+  const [areaSubSel, setAreaSubSel] = useState("All");
+  const [quickAmt, setQuickAmt] = useState({}); // {docId: amount string}
 
   const monthData = toObj(bizplan[month]);
-
   const numFields = bizFieldDefs.filter(f=>f.type==="number");
   const totals = {};
-  numFields.forEach(f => {
-    totals[f.key] = doctors.reduce((s,d)=>s+Number(toObj(monthData[d.id])[f.key]||0),0);
-  });
+  numFields.forEach(f => { totals[f.key] = doctors.reduce((s,d)=>s+Number(toObj(monthData[d.id])[f.key]||0),0); });
   const plannedCount = doctors.filter(d=>Object.keys(toObj(monthData[d.id])).length>0).length;
 
   const filtered = doctors.filter(d =>
@@ -664,31 +838,52 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
     setModal(d.id);
   };
 
-  const save = () => {
-    onSaveEntry(modal, form);
-    notify("Business plan updated!");
-    setModal(null);
+  const save = () => { onSaveEntry(modal, form); notify("Business plan updated!"); setModal(null); };
+
+  const saveQuick = (docId) => {
+    const amt = Number(quickAmt[docId]||0);
+    if (!amt) return;
+    const entry = toObj(monthData[docId]);
+    const d = doctors.find(x=>x.id===docId);
+    onSaveEntry(docId, {...entry, tentativeBiz: String(amt), priority: entry.priority||d.priority||"Medium", crmYN: entry.crmYN||d.crmYN||"No", crmAmt: entry.crmAmt||d.crmAmt||0, tentativeCrmMonth: entry.tentativeCrmMonth||month});
+    notify("Saved!");
+    setQuickAmt(p=>({...p,[docId]:""}));
   };
 
   const addField = () => {
     if (!newField.label.trim()) return;
     const key = "f_" + newField.label.trim().toLowerCase().replace(/[^a-z0-9]+/g,"_").slice(0,24) + "_" + uid().slice(0,4);
     onAddField({key, label:newField.label.trim(), type:newField.type});
-    setNewField({label:"",type:"text"});
-    setFieldModal(false);
+    setNewField({label:"",type:"text"}); setFieldModal(false);
   };
 
   const editingDoc = modal ? doctors.find(d=>d.id===modal) : null;
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
-        <MonthPicker value={month} onChange={setMonth}/>
-        <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " md:w-44"}>
-          <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
-        </select>
-        <input placeholder="Search doctor…" value={search} onChange={e=>setSearch(e.target.value)} className={INP}/>
-        {isAdmin && <button onClick={()=>setFieldModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap">+ Add Field</button>}
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <MonthPicker value={month} onChange={setMonth}/>
+          <div className="flex gap-1 bg-gray-100 p-0.5 rounded-lg">
+            <button onClick={()=>setBizView("list")} className={`px-3 py-1.5 rounded-md text-xs font-bold ${bizView==="list"?"bg-white text-teal-700 shadow-sm":"text-gray-500"}`}>📋 List</button>
+            <button onClick={()=>setBizView("area")} className={`px-3 py-1.5 rounded-md text-xs font-bold ${bizView==="area"?"bg-white text-teal-700 shadow-sm":"text-gray-500"}`}>🏘️ Area</button>
+          </div>
+          {isAdmin && bizView==="list" && <button onClick={()=>setFieldModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">+ Add Field</button>}
+        </div>
+        {bizView==="list" && (
+          <div className="flex gap-2 flex-wrap">
+            <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " max-w-44"}>
+              <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
+            </select>
+            <input placeholder="Search doctor…" value={search} onChange={e=>setSearch(e.target.value)} className={INP}/>
+          </div>
+        )}
+        {bizView==="area" && (
+          <div className="flex gap-1.5 flex-wrap">
+            <button onClick={()=>setAreaSubSel("All")} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSubSel==="All"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>All</button>
+            {areas.map(a=><button key={a} onClick={()=>setAreaSubSel(a)} className={`px-3 py-1.5 rounded-lg text-xs font-bold ${areaSubSel===a?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>{a}</button>)}
+          </div>
+        )}
       </div>
 
       <div className="bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 mb-4 flex flex-wrap gap-x-6 gap-y-1.5 text-xs">
@@ -698,6 +893,44 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
         ))}
         {numFields.length===0 && <span className="text-gray-400">Add a number field to track totals</span>}
       </div>
+
+      {/* ── AREA QUICK-ADD VIEW ── */}
+      {bizView==="area" && (
+        <div>
+          {(areaSubSel==="All"?areas:[areaSubSel]).map(area=>(
+            <div key={area} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+              <div className="px-4 py-2.5 bg-teal-50 border-b border-teal-100 text-xs font-bold text-teal-700 uppercase">{area} · {doctors.filter(d=>d.area===area).length} doctors</div>
+              <div className="divide-y divide-gray-50">
+                {doctors.filter(d=>d.area===area).map(d=>{
+                  const entry = toObj(monthData[d.id]);
+                  const hasPlan = Object.keys(entry).some(k=>entry[k]!==undefined&&entry[k]!=="");
+                  const biz = entry.tentativeBiz||"";
+                  return (
+                    <div key={d.id} className="px-4 py-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div>
+                          <p className="font-semibold text-gray-800 text-sm">{d.name} <span className="text-gray-300 font-normal text-xs">· {d.mdl||"—"}</span></p>
+                          {hasPlan && <p className="text-xs text-teal-600 font-bold">Tentative: {fmt(biz||0)} {entry.focusProduct?`· ${entry.focusProduct}`:""}</p>}
+                        </div>
+                        <button onClick={()=>openEdit(d)} className="text-teal-400 hover:text-teal-700 text-xs font-bold px-2">✏️</button>
+                      </div>
+                      <div className="flex gap-2">
+                        <input type="number" placeholder="Tentative Business (Rs.)" value={quickAmt[d.id]||""} onChange={e=>setQuickAmt(p=>({...p,[d.id]:e.target.value}))}
+                          className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal-300"/>
+                        <button onClick={()=>saveQuick(d.id)} disabled={!quickAmt[d.id]} className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-bold disabled:opacity-40 hover:bg-teal-700">Save</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── LIST VIEW ── */}
+      {bizView==="list" && (
+      <div>
       <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {filtered.length} doctors · tap a row to plan</p>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -732,6 +965,8 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
         </div>
         {filtered.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors found</div>}
       </div>
+      </div>
+      )}{/* end bizView==="list" */}
 
       <Modal open={!!modal} onClose={()=>setModal(null)} title={editingDoc ? `📋 ${editingDoc.name}` : "Business Plan"} wide>
         {editingDoc && (
@@ -1020,9 +1255,10 @@ function buildReportHTML(title, monthLbl, headers, rows, totalsRow) {
 ══════════════════════════════════ */
 function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
   const [month, setMonth] = useState("2026-06");
-  const [type, setType]   = useState("biz"); // biz | crm
+  const [type, setType]   = useState("biz");
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState("All");
+  const [generating, setGenerating] = useState(false);
 
   const monthData = toObj(bizplan[month]);
   const bizRows = doctors
@@ -1042,10 +1278,7 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
     let html;
     if (type==="biz") {
       const headers = ["Doctor","MDL","Area","Priority", ...bizFieldDefs.map(f=>f.label)];
-      const rows = bizRows.map(r => [
-        r.doc.name, r.doc.mdl||"—", r.doc.area, r.doc.priority||"Medium",
-        ...bizFieldDefs.map(f => r.entry[f.key]!==undefined && r.entry[f.key]!=="" ? (f.type==="number"?fmt(r.entry[f.key]):r.entry[f.key]) : "—")
-      ]);
+      const rows = bizRows.map(r => [r.doc.name, r.doc.mdl||"—", r.doc.area, r.doc.priority||"Medium", ...bizFieldDefs.map(f => r.entry[f.key]!==undefined && r.entry[f.key]!=="" ? (f.type==="number"?fmt(r.entry[f.key]):r.entry[f.key]) : "—")]);
       const totalsRow = ["TOTAL","","","", ...bizFieldDefs.map(f=>f.type==="number"?fmt(bizTotals[f.key]):"")];
       html = buildReportHTML("Business Plan Report" + (areaSel!=="All"?` — ${areaSel}`:""), monthLabel(month), headers, rows, totalsRow);
     } else {
@@ -1059,20 +1292,104 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
     win.document.open(); win.document.write(html); win.document.close();
   };
 
+  const genImage = async () => {
+    setGenerating(true);
+    const title = type==="biz" ? "Business Plan Report" : "CRM Plan Report";
+    const areaLabel = areaSel!=="All" ? ` · ${areaSel}` : "";
+    const dt = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"});
+
+    let rowsHTML = "";
+    if (type==="biz") {
+      rowsHTML = bizRows.map((r,i)=>`
+        <tr style="background:${i%2===0?"#f9fafb":"white"}">
+          <td style="padding:7px 10px;font-weight:600;color:#1f2937;">${i+1}. ${r.doc.name}</td>
+          <td style="padding:7px 10px;color:#6b7280;font-size:11px;">${r.doc.mdl||"—"}</td>
+          <td style="padding:7px 10px;"><span style="background:#f0fdf4;color:#16a34a;padding:2px 6px;border-radius:99px;font-size:10px;font-weight:700;">${r.doc.area}</span></td>
+          ${numFields.map(f=>`<td style="padding:7px 10px;font-weight:700;color:#0f766e;">${r.entry[f.key]!==undefined&&r.entry[f.key]!==""?fmt(r.entry[f.key]):"—"}</td>`).join("")}
+        </tr>`).join("");
+    } else {
+      rowsHTML = crmRows.map((e,i)=>`
+        <tr style="background:${i%2===0?"#f9fafb":"white"}">
+          <td style="padding:7px 10px;font-weight:600;color:#1f2937;">${i+1}. ${e.doctorName}</td>
+          <td style="padding:7px 10px;color:#6b7280;font-size:11px;">${e.mdl||"—"}</td>
+          <td style="padding:7px 10px;"><span style="background:#f0fdf4;color:#16a34a;padding:2px 6px;border-radius:99px;font-size:10px;font-weight:700;">${e.area}</span></td>
+          <td style="padding:7px 10px;font-weight:700;color:#0f766e;">${fmt(e.crmAmt)}</td>
+          <td style="padding:7px 10px;color:#6b7280;font-size:11px;">${e.actualMonth?monthLabel(e.actualMonth):"—"}</td>
+        </tr>`).join("");
+    }
+    const bizHeader = numFields.map(f=>`<th style="padding:8px 10px;text-align:left;background:#0f766e;color:#fff;font-size:11px;">${f.label}</th>`).join("");
+    const crmHeader = `<th style="padding:8px 10px;text-align:left;background:#0f766e;color:#fff;font-size:11px;">CRM Amt</th><th style="padding:8px 10px;text-align:left;background:#0f766e;color:#fff;font-size:11px;">Actual Month</th>`;
+    const totalRow = type==="biz"
+      ? `<tr style="background:#ccfbf1;font-weight:800;"><td colspan="3" style="padding:8px 10px;color:#0f766e;">Total</td>${numFields.map(f=>`<td style="padding:8px 10px;color:#0f766e;">${fmt(bizTotals[f.key])}</td>`).join("")}</tr>`
+      : `<tr style="background:#ccfbf1;font-weight:800;"><td colspan="3" style="padding:8px 10px;color:#0f766e;">Total</td><td style="padding:8px 10px;color:#0f766e;">${fmt(crmTotalAmt)}</td><td style="padding:8px 10px;color:#0f766e;"></td></tr>`;
+
+    const html = `<div id="rpt-card" style="width:750px;background:#ffffff;font-family:Arial,Helvetica,sans-serif;padding:32px;box-sizing:border-box;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid #0f766e;">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px;">🩺 Aldan Beat</div>
+          <div style="font-size:22px;font-weight:900;color:#0f766e;">${title}</div>
+          <div style="font-size:12px;color:#9ca3af;margin-top:2px;">${monthLabel(month)}${areaLabel} · ${dt}</div>
+        </div>
+        <div style="text-align:right;background:#f0fdf4;border-radius:12px;padding:12px 18px;">
+          <div style="font-size:28px;font-weight:900;color:#0f766e;">${type==="biz"?bizRows.length:crmRows.length}</div>
+          <div style="font-size:10px;color:#6b7280;">doctors</div>
+        </div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr>
+          <th style="padding:8px 10px;text-align:left;background:#0f766e;color:#fff;font-size:11px;">Doctor</th>
+          <th style="padding:8px 10px;text-align:left;background:#0f766e;color:#fff;font-size:11px;">MDL</th>
+          <th style="padding:8px 10px;text-align:left;background:#0f766e;color:#fff;font-size:11px;">Area</th>
+          ${type==="biz"?bizHeader:crmHeader}
+        </tr></thead>
+        <tbody>${rowsHTML}</tbody>
+        <tfoot>${totalRow}</tfoot>
+      </table>
+      <div style="margin-top:20px;font-size:10px;color:#d1d5db;text-align:center;padding-top:12px;border-top:1px solid #f3f4f6;">Generated by Aldan Beat · aldan healthcare pvt ltd</div>
+    </div>`;
+
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-999;";
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap);
+    try {
+      await new Promise(r=>setTimeout(r,200));
+      const card = wrap.querySelector("#rpt-card");
+      const canvas = await html2canvas(card, {scale:2, useCORS:true, backgroundColor:"#ffffff"});
+      const dataUrl = canvas.toDataURL("image/png");
+      const fname = `${title.replace(/[^a-z0-9]/gi,"_")}_${month}.png`;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        const win = window.open("","_blank");
+        win.document.write(`<html><head><meta name="viewport" content="width=device-width"><title>${title}</title><style>body{margin:0;background:#f9fafb;display:flex;flex-direction:column;align-items:center;padding:16px;box-sizing:border-box}img{max-width:100%;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}p{color:#6b7280;font-family:sans-serif;font-size:12px;margin-top:10px;text-align:center}</style></head><body><img src="${dataUrl}"><p>Long press → Save to Photos / Share</p></body></html>`);
+      } else {
+        const a = document.createElement("a"); a.href=dataUrl; a.download=fname; a.click();
+      }
+    } catch(err) { console.error(err); alert("Image generation failed"); }
+    finally { document.body.removeChild(wrap); setGenerating(false); }
+  };
+
   const rows = type==="biz" ? bizRows : crmRows;
 
   return (
     <div>
-      <div className="flex flex-col md:flex-row md:items-center gap-3 mb-3">
-        <MonthPicker value={month} onChange={setMonth}/>
-        <div className="flex gap-1.5">
-          <button onClick={()=>setType("biz")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="biz"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>📊 Business Plan</button>
-          <button onClick={()=>setType("crm")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="crm"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>💰 CRM Plan</button>
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <MonthPicker value={month} onChange={setMonth}/>
+          <div className="flex gap-1.5">
+            <button onClick={()=>setType("biz")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="biz"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>📊 Business Plan</button>
+            <button onClick={()=>setType("crm")} className={`px-4 py-2 rounded-lg text-sm font-bold ${type==="crm"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>💰 CRM Plan</button>
+          </div>
         </div>
-        <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " md:w-44"}>
-          <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
-        </select>
-        <button onClick={generate} className="md:ml-auto bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap">📤 Generate / Share Report</button>
+        <div className="flex gap-2 flex-wrap">
+          <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " max-w-44"}>
+            <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
+          </select>
+          <button onClick={generate} disabled={generating} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap disabled:opacity-50">📄 PDF / Share Text</button>
+          <button onClick={genImage} disabled={generating} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap disabled:opacity-50">
+            {generating?"⟳ Generating…":"🖼️ WhatsApp Image"}
+          </button>
+        </div>
       </div>
 
       <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} {areaSel!=="All"&&`· ${areaSel}`} · {rows.length} doctors with {type==="biz"?"a business plan":"a CRM plan"}</p>
@@ -1156,7 +1473,7 @@ function App() {
   const [data, setData]       = useState({doctors:[], tourplan:{}, actual:{}, bizplan:{}, bizFieldDefs:[], crmplan:{}});
   const [loaded, setLoaded]   = useState(false);
   const [syncSt, setSyncSt]   = useState("connecting");
-  const [tab, setTab]         = useState("doctors");
+  const [tab, setTab]         = useState("tourplan");
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminModal, setAdminModal] = useState(false);
   const [pwInput, setPwInput] = useState("");
@@ -1210,6 +1527,24 @@ function App() {
     if (!tp[tpMonth][docId]) tp[tpMonth][docId] = {};
     tp[tpMonth][docId][day] = !tp[tpMonth][docId][day];
     if (!tp[tpMonth][docId][day]) delete tp[tpMonth][docId][day];
+    save({...data, tourplan:tp});
+  };
+
+  /* Add multiple doctors to TP — if daily mode, mark them for current day; else just add to month plan (day 1 placeholder) */
+  const addDoctorsToTP = (ids, day, isDaily) => {
+    const tp = JSON.parse(JSON.stringify(data.tourplan));
+    if (!tp[tpMonth]) tp[tpMonth] = {};
+    ids.forEach(id => {
+      if (!tp[tpMonth][id]) tp[tpMonth][id] = {};
+      if (isDaily) tp[tpMonth][id][day] = true;
+      // if grid mode, just ensure entry exists — user taps cells to plan
+    });
+    save({...data, tourplan:tp});
+  };
+
+  const removeDoctorFromTP = (docId) => {
+    const tp = JSON.parse(JSON.stringify(data.tourplan));
+    if (tp[tpMonth]) delete tp[tpMonth][docId];
     save({...data, tourplan:tp});
   };
 
@@ -1342,7 +1677,7 @@ function App() {
 
       <div className="max-w-6xl mx-auto px-4 py-5 pb-24">
         {tab==="doctors" && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
-        {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={data.tourplan} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan}/>}
+        {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={data.tourplan} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan} onAddDoctorsToTP={addDoctorsToTP} onRemoveDoctorFromTP={removeDoctorFromTP}/>}
         {tab==="actual" && <ActualVisitsTab doctors={data.doctors} tourplan={data.tourplan} actual={data.actual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"}/>}
         {tab==="bizplan" && <BusinessPlanTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} month={bpMonth} setMonth={setBpMonth} onSaveEntry={saveBizEntry} onAddField={addBizField} isAdmin={isAdmin} notify={notify}/>}
         {tab==="crmplan" && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} onSavePriority={saveDoctorPriority} notify={notify} ask={ask}/>}
