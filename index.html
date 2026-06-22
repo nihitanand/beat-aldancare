@@ -1921,7 +1921,7 @@ function App() {
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto px-4 py-5" style={{flex:"1 1 0",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+      <div className="max-w-6xl mx-auto px-4 py-5" style={{flex:"1 1 0",overflowY:"auto",overflowX:"hidden",WebkitOverflowScrolling:"touch"}}>
         {tab==="doctors"  && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
         {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={currentTP} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan} onAddDoctorsToTP={addDoctorsToTP} onRemoveDoctorFromTP={removeDoctorFromTP} onSetTPCompanions={setTPCompanions} availableCompanions={availableCompanions}/>}
         {tab==="actual"   && <ActualVisitsTab doctors={data.doctors} tourplan={currentTP} actual={currentActual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"} availableCompanions={availableCompanions}/>}
