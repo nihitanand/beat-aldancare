@@ -980,6 +980,10 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
   const [bizView, setBizView] = useState("list"); // list | area
   const [areaSubSel, setAreaSubSel] = useState("All");
   const [quickAmt, setQuickAmt] = useState({}); // {docId: amount string}
+  const [qaModal, setQaModal] = useState(false); // quick-add modal
+  const [qaEdits, setQaEdits] = useState({}); // {docId: {tentativeBiz, focusProduct}}
+  const [qaSearch, setQaSearch] = useState("");
+  const [qaArea, setQaArea] = useState("All");
 
   const monthData = toObj(bizplan[month]);
   const numFields = bizFieldDefs.filter(f=>f.type==="number");
@@ -991,6 +995,61 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
     (areaSel==="All" || d.area===areaSel) &&
     d.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  // Quick-add modal filtered list — respects qaArea + qaSearch
+  const qaFiltered = doctors.filter(d =>
+    (qaArea==="All" || d.area===qaArea) &&
+    d.name.toLowerCase().includes(qaSearch.toLowerCase())
+  );
+
+  const openQuickAdd = () => {
+    // Pre-fill qaEdits with existing biz data for all doctors
+    const init = {};
+    doctors.forEach(d => {
+      const e = toObj(monthData[d.id]);
+      if (e.tentativeBiz || (e.focusProduct && e.focusProduct.length)) {
+        const fp = e.focusProduct;
+        init[d.id] = {
+          tentativeBiz: e.tentativeBiz||"",
+          focusProduct: Array.isArray(fp)?fp:(fp?[fp]:[]),
+        };
+      }
+    });
+    setQaEdits(init);
+    setQaSearch("");
+    setQaArea(areaSel); // inherit current area filter
+    setQaModal(true);
+  };
+
+  const setQaField = (docId, field, val) => {
+    setQaEdits(p => ({...p, [docId]: {...(p[docId]||{}), [field]: val}}));
+  };
+
+  const saveQaOne = (docId) => {
+    const d = doctors.find(x=>x.id===docId);
+    const qa = qaEdits[docId]||{};
+    if (!qa.tentativeBiz && !(qa.focusProduct||[]).length) return;
+    const entry = toObj(monthData[docId]);
+    onSaveEntry(docId, {...entry, tentativeBiz: String(qa.tentativeBiz||0), focusProduct: qa.focusProduct||[], priority: entry.priority||d.priority||"Medium", crmYN: entry.crmYN||d.crmYN||"No", crmAmt: entry.crmAmt||d.crmAmt||0, tentativeCrmMonth: entry.tentativeCrmMonth||month});
+    notify("Saved!");
+  };
+
+  const saveQaAll = () => {
+    const ids = Object.keys(qaEdits).filter(id => {
+      const qa = qaEdits[id];
+      return qa && (qa.tentativeBiz || (qa.focusProduct||[]).length);
+    });
+    if (!ids.length) { notify("Nothing to save","red"); return; }
+    ids.forEach(id => saveQaOne(Number(id)));
+    notify(ids.length+" doctors updated!");
+    setQaModal(false);
+  };
+
+  const toggleQaProduct = (docId, p) => {
+    const cur = (qaEdits[docId]||{}).focusProduct||[];
+    const next = cur.includes(p) ? cur.filter(x=>x!==p) : [...cur,p];
+    setQaField(docId, "focusProduct", next);
+  };
 
   const openEdit = (d) => {
     const entry = toObj(monthData[d.id]);
@@ -1029,6 +1088,7 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
             <button onClick={()=>setBizView("area")} className={`px-3 py-1.5 rounded-md text-xs font-bold ${bizView==="area"?"bg-white text-teal-700 shadow-sm":"text-gray-500"}`}>🏘️ Area</button>
           </div>
           {isAdmin && bizView==="list" && <button onClick={()=>setFieldModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">+ Add Field</button>}
+          {bizView==="list" && <button onClick={openQuickAdd} className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">⚡ Quick Add</button>}
         </div>
         {bizView==="list" && (
           <div className="flex gap-2 flex-wrap">
@@ -1197,6 +1257,67 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
           </div>
         </div>
       </Modal>
+
+      {/* ── Quick Add Modal ── */}
+      {qaModal && (
+        <div className="fixed inset-0 z-50 flex flex-col" style={{background:"rgba(15,23,42,0.65)"}}>
+          <div className="bg-white flex flex-col" style={{marginTop:"auto",maxHeight:"92%",borderRadius:"20px 20px 0 0"}}>
+            {/* Header */}
+            <div className="flex justify-between items-center px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-base font-bold text-gray-800">⚡ Quick Add Business Plan</h2>
+              <button onClick={()=>setQaModal(false)} className="text-gray-300 hover:text-gray-700 text-xl font-bold">✕</button>
+            </div>
+            {/* Filters */}
+            <div className="px-4 pt-3 pb-2 flex-shrink-0 space-y-2 border-b border-gray-100">
+              <input placeholder="Search doctor…" value={qaSearch} onChange={e=>setQaSearch(e.target.value)} className={INP} autoFocus/>
+              <div className="flex gap-1.5 flex-wrap">
+                <button onClick={()=>setQaArea("All")} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${qaArea==="All"?"bg-teal-600 text-white border-teal-600":"bg-white text-gray-400 border-gray-200"}`}>All</button>
+                {areas.map(a=><button key={a} onClick={()=>setQaArea(a)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${qaArea===a?"bg-teal-600 text-white border-teal-600":"bg-white text-gray-400 border-gray-200"}`}>{a}</button>)}
+              </div>
+              <p className="text-xs text-gray-400">{Object.keys(qaEdits).filter(id=>qaEdits[id]&&(qaEdits[id].tentativeBiz||(qaEdits[id].focusProduct||[]).length)).length} doctors edited</p>
+            </div>
+            {/* Doctor list */}
+            <div className="overflow-y-auto flex-1">
+              {qaFiltered.map(d=>{
+                const qa = qaEdits[d.id]||{};
+                const existing = toObj(monthData[d.id]);
+                const curBiz = qa.tentativeBiz!==undefined ? qa.tentativeBiz : (existing.tentativeBiz||"");
+                const curProd = qa.focusProduct!==undefined ? qa.focusProduct : (Array.isArray(existing.focusProduct)?existing.focusProduct:(existing.focusProduct?[existing.focusProduct]:[]));
+                const isDirty = (qa.tentativeBiz!==undefined && qa.tentativeBiz!==existing.tentativeBiz) || (qa.focusProduct!==undefined);
+                return (
+                  <div key={d.id} className={`px-4 py-3 border-b border-gray-50 ${isDirty?"bg-teal-50/40":""}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-semibold text-gray-800 text-sm">{d.name} <span className="text-gray-300 text-xs font-normal">· {d.mdl||"—"}</span></p>
+                        <p className="text-xs text-gray-400">{d.area}</p>
+                      </div>
+                      <button onClick={()=>saveQaOne(d.id)} disabled={!curBiz && !curProd.length}
+                        className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-bold disabled:opacity-30 hover:bg-teal-700 flex-shrink-0 ml-2">Save</button>
+                    </div>
+                    <div className="flex gap-2 mb-2">
+                      <input type="number" placeholder="Tentative Business (Rs.)" value={curBiz}
+                        onChange={e=>setQaField(d.id,"tentativeBiz",e.target.value)}
+                        className="flex-1 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal-300"/>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {ALDERMA_PRODUCTS.map(p=>(
+                        <button key={p} onClick={()=>toggleQaProduct(d.id,p)}
+                          className={`px-2 py-0.5 rounded-full text-[9px] font-bold border transition-colors ${curProd.includes(p)?"bg-teal-600 text-white border-teal-600":"bg-white text-gray-400 border-gray-200"}`}>{p}</button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              {qaFiltered.length===0 && <div className="text-center py-10 text-gray-300 text-sm">No doctors found</div>}
+            </div>
+            {/* Footer */}
+            <div className="px-4 py-3 border-t border-gray-100 flex gap-3 flex-shrink-0">
+              <button onClick={()=>setQaModal(false)} className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-200">Cancel</button>
+              <button onClick={saveQaAll} className="flex-1 py-2.5 bg-teal-600 text-white rounded-xl text-sm font-bold hover:bg-teal-700">💾 Save All</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
