@@ -501,7 +501,17 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
   const scopeDocs = areaSel==="All" ? doctors : rows;
   const totalCalls = scopeDocs.reduce((s,d)=>s+plannedCount(d.id), 0);
   const workDays = workingDaysInMonth(month);
-  const callAvg = workDays ? (totalCalls / workDays).toFixed(1) : "0.0";
+  // Days with at least one planned doctor (in current area scope)
+  const daysWithPlan = (function() {
+    const daySet = new Set();
+    scopeDocs.forEach(function(d) {
+      Object.entries(toObj(monthDocs[d.id])).forEach(function(kv) {
+        if (tpEntryOf(kv[1]).planned) daySet.add(kv[0]);
+      });
+    });
+    return daySet.size;
+  })();
+  const callAvg = daysWithPlan ? (totalCalls / daysWithPlan).toFixed(1) : "0.0";
   const DOC_COL_W = 150, TOT_COL_W = 40;
 
   const dateStr = `${month}-${String(date).padStart(2,"0")}`;
@@ -561,8 +571,8 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
           <p className="text-lg font-black text-teal-700">{tpView==="daily"?plannedToday.length:totalCalls}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
-          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Working Days</p>
-          <p className="text-lg font-black text-gray-700">{workDays}<span className="text-xs font-normal text-gray-400"> (M–S)</span></p>
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Days Planned</p>
+          <p className="text-lg font-black text-gray-700">{daysWithPlan}<span className="text-xs font-normal text-gray-400"> of {workDays}</span></p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
           <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Call Avg / Day</p>
@@ -737,6 +747,32 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
   const monthPlan   = toObj(tourplan[month]);
   const monthActual = toObj(actual[month]);
 
+  // Month-level stats for banner (only days that have a plan)
+  const avStats = useMemo(() => {
+    const today = new Date();
+    const [y,m] = month.split("-").map(Number);
+    const nDaysM = daysInMonth(month);
+    // Days with at least one planned doctor (within planned days only)
+    const plannedDays = new Set();
+    const visitedDays = new Set();
+    let totalVisited = 0;
+    for (let d=1; d<=nDaysM; d++) {
+      const dayDate = new Date(y, m-1, d);
+      if (dayDate > today) continue; // don't count future days
+      const hasPlanned = doctors.some(doc => tpEntryOf(toObj(monthPlan[doc.id])[d]).planned);
+      if (!hasPlanned) continue; // only count planned days
+      plannedDays.add(d);
+      const hasVisit = doctors.some(doc => visitOf(toObj(monthActual[doc.id])[d]).done);
+      if (hasVisit) {
+        visitedDays.add(d);
+        doctors.forEach(doc => { if (visitOf(toObj(monthActual[doc.id])[d]).done) totalVisited++; });
+      }
+    }
+    const daysWorked = visitedDays.size;
+    const callAvg = daysWorked ? (totalVisited / daysWorked).toFixed(1) : "0.0";
+    return {totalVisited, daysWorked, plannedDayCount: plannedDays.size, callAvg};
+  }, [doctors, monthPlan, monthActual, month]);
+
   const [companionFilter, setCompanionFilter] = useState([]); // [] = no filter; values: "Independent" or a companion name
 
   const matchesFilter = (docId) => {
@@ -770,10 +806,25 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-3">
         <button onClick={()=>setView("daily")} className={`px-4 py-2 rounded-lg text-sm font-bold ${view==="daily"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>📋 Daily</button>
         <button onClick={()=>setView("grid")} className={`px-4 py-2 rounded-lg text-sm font-bold ${view==="grid"?"bg-teal-600 text-white":"bg-white border border-gray-200 text-gray-500"}`}>🗓️ Monthly Grid</button>
         <MonthPicker value={month} onChange={setMonth}/>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Total Visited</p>
+          <p className="text-lg font-black text-emerald-600">{avStats.totalVisited}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Days Worked</p>
+          <p className="text-lg font-black text-gray-700">{avStats.daysWorked}<span className="text-xs font-normal text-gray-400"> of {avStats.plannedDayCount}</span></p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Call Avg / Day</p>
+          <p className="text-lg font-black text-indigo-700">{avStats.callAvg}</p>
+        </div>
       </div>
 
       {view==="daily" && (
