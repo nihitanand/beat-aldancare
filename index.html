@@ -1076,6 +1076,7 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState("All");
   const [search, setSearch]   = useState("");
+  const [bizStatus, setBizStatus] = useState("all"); // all | completed | pending
   const [modal, setModal]     = useState(null);
   const [form, setForm]       = useState({});
   const [fieldModal, setFieldModal] = useState(false);
@@ -1094,10 +1095,14 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
   numFields.forEach(f => { totals[f.key] = doctors.reduce((s,d)=>s+Number(toObj(monthData[d.id])[f.key]||0),0); });
   const plannedCount = doctors.filter(d=>Object.keys(toObj(monthData[d.id])).length>0).length;
 
-  const filtered = doctors.filter(d =>
-    (areaSel==="All" || d.area===areaSel) &&
-    d.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = doctors.filter(d => {
+    if (areaSel!=="All" && d.area!==areaSel) return false;
+    if (!d.name.toLowerCase().includes(search.toLowerCase())) return false;
+    const hasEntry = Object.keys(toObj(monthData[d.id])).some(k => toObj(monthData[d.id])[k]!==undefined && toObj(monthData[d.id])[k]!=="");
+    if (bizStatus==="completed" && !hasEntry) return false;
+    if (bizStatus==="pending" && hasEntry) return false;
+    return true;
+  });
 
   // Quick-add modal filtered list — respects qaArea + qaSearch
   const qaFiltered = doctors.filter(d =>
@@ -1194,11 +1199,24 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
           {bizView==="list" && <button onClick={openQuickAdd} className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">⚡ Quick Add</button>}
         </div>
         {bizView==="list" && (
-          <div className="flex gap-2 flex-wrap">
-            <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " max-w-44"}>
-              <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
-            </select>
-            <input placeholder="Search doctor…" value={search} onChange={e=>setSearch(e.target.value)} className={INP}/>
+          <div className="space-y-2">
+            <div className="flex gap-2 flex-wrap">
+              <select value={areaSel} onChange={e=>setAreaSel(e.target.value)} className={INP + " max-w-44"}>
+                <option>All</option>{areas.map(a=><option key={a}>{a}</option>)}
+              </select>
+              <input placeholder="Search doctor…" value={search} onChange={e=>setSearch(e.target.value)} className={INP}/>
+            </div>
+            <div className="flex gap-1.5">
+              {[["all","All",doctors.filter(d=>(areaSel==="All"||d.area===areaSel)).length],
+                ["completed","✅ Completed",doctors.filter(d=>(areaSel==="All"||d.area===areaSel)&&Object.keys(toObj(monthData[d.id])).some(k=>toObj(monthData[d.id])[k]!==""&&toObj(monthData[d.id])[k]!==undefined)).length],
+                ["pending","⏳ Pending",doctors.filter(d=>(areaSel==="All"||d.area===areaSel)&&!Object.keys(toObj(monthData[d.id])).some(k=>toObj(monthData[d.id])[k]!==""&&toObj(monthData[d.id])[k]!==undefined)).length],
+              ].map(([val,lbl,cnt])=>(
+                <button key={val} onClick={()=>setBizStatus(val)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${bizStatus===val?(val==="completed"?"bg-emerald-600 text-white":val==="pending"?"bg-amber-500 text-white":"bg-teal-600 text-white"):"bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                  {lbl} ({cnt})
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {bizView==="area" && (
@@ -1254,7 +1272,7 @@ function BusinessPlanTab({doctors, bizplan, bizFieldDefs, month, setMonth, onSav
       {/* ── LIST VIEW ── */}
       {bizView==="list" && (
       <div>
-      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {filtered.length} doctors · tap a row to plan</p>
+      <p className="text-xs text-gray-400 mb-3">{monthLabel(month)} · {filtered.length} {bizStatus!=="all"?bizStatus:"total"} doctors{areaSel!=="All"?` in ${areaSel}`:""}</p>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
