@@ -131,7 +131,7 @@ const USER_COMPANIONS = {
 };
 // Keep COMPANIONS as fallback for any component still referencing it
 const COMPANIONS = USER_COMPANIONS.amit;
-const APP_VERSION = "v1.3.1";
+const APP_VERSION = "v1.4";
 
 const SEED_BIZFIELDS = [
   {key:"tentativeBiz", label:"Tentative Business (Rs.)", type:"number"},
@@ -484,7 +484,7 @@ function DoctorMasterTab({doctors, isAdmin, onSave, notify, ask}) {
 /* ══════════════════════════════════
    TAB: TOUR PLAN (month-wise)
 ══════════════════════════════════ */
-function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctorsToTP, onRemoveDoctorFromTP, onSetTPCompanions, availableCompanions}) {
+function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctorsToTP, onRemoveDoctorFromTP, onSetTPCompanions, availableCompanions, leave, onToggleLeave}) {
   const areas = useMemo(() => Array.from(new Set(doctors.map(d=>d.area).filter(Boolean))), [doctors]);
   const [areaSel, setAreaSel] = useState("All");
   const [tpView, setTpView] = useState("daily"); // grid | daily
@@ -511,6 +511,9 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
     });
     return daySet.size;
   })();
+  const monthLeave  = toObj((leave||{})[month]);
+  const leaveDays   = Object.keys(monthLeave).filter(function(k){ return monthLeave[k]; }).length;
+  const isLeaveDay  = !!(monthLeave[String(date)]);
   const callAvg = daysWithPlan ? (totalCalls / daysWithPlan).toFixed(1) : "0.0";
   const DOC_COL_W = 150, TOT_COL_W = 40;
 
@@ -551,7 +554,11 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
               onChange={e=>{ const d=Number(e.target.value.split("-")[2]); if(d>=1&&d<=nDays) setDate(d); }}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-teal-700"/>
             <span className="text-xs text-gray-400">({WD[weekdayOf(month,date)]})</span>
-            <button onClick={()=>setAddOpen(true)} className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Add Doctors</button>
+            <button onClick={()=>onToggleLeave(month, String(date))}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold ${isLeaveDay?"bg-amber-500 text-white":"bg-amber-50 text-amber-600 border border-amber-200"}`}>
+              {isLeaveDay?"🏖️ On Leave":"🏖️ Mark Leave"}
+            </button>
+            {!isLeaveDay && <button onClick={()=>setAddOpen(true)} className="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Add Doctors</button>}
           </div>
         )}
 
@@ -573,6 +580,7 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
           <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Days Planned</p>
           <p className="text-lg font-black text-gray-700">{daysWithPlan}<span className="text-xs font-normal text-gray-400"> of {workDays}</span></p>
+          {leaveDays>0 && <p className="text-[10px] text-amber-500 font-bold mt-0.5">🏖️ {leaveDays} leave day{leaveDays>1?"s":""}</p>}
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
           <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Call Avg / Day</p>
@@ -587,25 +595,34 @@ function TourPlanTab({doctors, tourplan, month, setMonth, onToggle, onAddDoctors
             <div className="px-4 py-2.5 bg-teal-50 border-b border-teal-100 text-xs font-bold text-teal-700 uppercase">
               Planned for {date} {monthLabel(month)} ({plannedToday.length})
             </div>
-            {plannedToday.length===0 && <div className="text-center py-8 text-gray-300 text-sm">No doctors planned · tap "+ Add Doctors" to plan</div>}
-            <div className="divide-y divide-gray-50">
-              {plannedToday.map(d=>{
-                const entry = tpEntryOf(toObj(monthDocs[d.id])[date]);
-                return (
-                  <div key={d.id} className="px-4 py-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
-                        <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"} {d.priority==="High"&&<PriBadge p="High"/>}</p>
-                      </div>
-                      <button onClick={()=>onToggle(d.id, date)} className="text-red-400 hover:text-red-600 font-bold text-sm px-2">✕</button>
-                    </div>
-                    <CompanionChips companions={entry.companions} availableCompanions={availableCompanions||COMPANIONS}
-                      onChange={(c)=>onSetTPCompanions(d.id, date, c)}/>
+            {isLeaveDay
+              ? <div className="text-center py-10">
+                  <div className="text-4xl mb-2">🏖️</div>
+                  <p className="font-bold text-amber-600">On Leave</p>
+                  <p className="text-xs text-gray-400 mt-1">Tap "On Leave" above to remove</p>
+                </div>
+              : <>
+                  {plannedToday.length===0 && <div className="text-center py-8 text-gray-300 text-sm">No doctors planned · tap "+ Add Doctors" to plan</div>}
+                  <div className="divide-y divide-gray-50">
+                    {plannedToday.map(d=>{
+                      const entry = tpEntryOf(toObj(monthDocs[d.id])[date]);
+                      return (
+                        <div key={d.id} className="px-4 py-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <p className="font-semibold text-gray-800 text-sm">{d.name}</p>
+                              <p className="text-xs text-gray-400">{d.area} · MDL {d.mdl||"—"} {d.priority==="High"&&<PriBadge p="High"/>}</p>
+                            </div>
+                            <button onClick={()=>onToggle(d.id, date)} className="text-red-400 hover:text-red-600 font-bold text-sm px-2">✕</button>
+                          </div>
+                          <CompanionChips companions={entry.companions} availableCompanions={availableCompanions||COMPANIONS}
+                            onChange={(c)=>onSetTPCompanions(d.id, date, c)}/>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                </>
+            }
           </div>
         </div>
       )}
@@ -730,7 +747,7 @@ function CompanionChips({companions, onChange, availableCompanions}) {
 /* ══════════════════════════════════
    TAB: ACTUAL VISITS
 ══════════════════════════════════ */
-function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleActual, onSetCompanions, onClearPlan, mode, availableCompanions}) {
+function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleActual, onSetCompanions, onClearPlan, mode, availableCompanions, leave, onToggleLeave}) {
   const [view, setView] = useState("daily"); // daily | grid
   const nDays = daysInMonth(month);
   const [date, setDate] = useState(() => {
@@ -752,15 +769,17 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
     const today = new Date();
     const [y,m] = month.split("-").map(Number);
     const nDaysM = daysInMonth(month);
-    // Days with at least one planned doctor (within planned days only)
+    const monthLv = toObj((leave||{})[month]);
     const plannedDays = new Set();
     const visitedDays = new Set();
     let totalVisited = 0;
+    let leaveDaysCount = 0;
     for (let d=1; d<=nDaysM; d++) {
       const dayDate = new Date(y, m-1, d);
-      if (dayDate > today) continue; // don't count future days
+      if (dayDate > today) continue;
+      if (monthLv[String(d)]) { leaveDaysCount++; continue; } // skip leave days
       const hasPlanned = doctors.some(doc => tpEntryOf(toObj(monthPlan[doc.id])[d]).planned);
-      if (!hasPlanned) continue; // only count planned days
+      if (!hasPlanned) continue;
       plannedDays.add(d);
       const hasVisit = doctors.some(doc => visitOf(toObj(monthActual[doc.id])[d]).done);
       if (hasVisit) {
@@ -770,10 +789,11 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
     }
     const daysWorked = visitedDays.size;
     const callAvg = daysWorked ? (totalVisited / daysWorked).toFixed(1) : "0.0";
-    return {totalVisited, daysWorked, plannedDayCount: plannedDays.size, callAvg};
-  }, [doctors, monthPlan, monthActual, month]);
+    return {totalVisited, daysWorked, plannedDayCount: plannedDays.size, callAvg, leaveDaysCount};
+  }, [doctors, monthPlan, monthActual, month, leave]);
 
-  const [companionFilter, setCompanionFilter] = useState([]); // [] = no filter; values: "Independent" or a companion name
+  const monthLeaveAV   = toObj((leave||{})[month]);
+  const [companionFilter, setCompanionFilter] = useState([]);
 
   const matchesFilter = (docId) => {
     if (companionFilter.length===0) return true;
@@ -820,6 +840,7 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
           <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Days Worked</p>
           <p className="text-lg font-black text-gray-700">{avStats.daysWorked}<span className="text-xs font-normal text-gray-400"> of {avStats.plannedDayCount}</span></p>
+          {avStats.leaveDaysCount>0 && <p className="text-[10px] text-amber-500 font-bold mt-0.5">🏖️ {avStats.leaveDaysCount} leave day{avStats.leaveDaysCount>1?"s":""}</p>}
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2.5">
           <p className="text-[10px] font-bold uppercase text-gray-400 tracking-widest">Call Avg / Day</p>
@@ -834,9 +855,21 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
               onChange={e=>{ const d = Number(e.target.value.split("-")[2]); if (d>=1 && d<=nDays) setDate(d); }}
               className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-bold text-teal-700"/>
             <span className="text-xs text-gray-400">({WD[weekdayOf(month,date)]})</span>
-            <button onClick={()=>setAddOpen(true)} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Unplanned Visit</button>
-            <button onClick={handleActualShare} className="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">📤 Share</button>
+            <button onClick={()=>onToggleLeave(month, String(date))}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold ${monthLeaveAV[String(date)]?"bg-amber-500 text-white":"bg-amber-50 text-amber-600 border border-amber-200"}`}>
+              {monthLeaveAV[String(date)]?"🏖️ On Leave":"🏖️ Mark Leave"}
+            </button>
+            {!monthLeaveAV[String(date)] && <button onClick={()=>setAddOpen(true)} className="ml-auto bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">+ Unplanned Visit</button>}
+            {!monthLeaveAV[String(date)] && <button onClick={handleActualShare} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">📤 Share</button>}
           </div>
+
+          {monthLeaveAV[String(date)] && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
+              <div className="text-4xl mb-2">🏖️</div>
+              <p className="font-bold text-amber-700 text-lg">On Leave</p>
+              <p className="text-xs text-amber-500 mt-1">Tap "On Leave" above to remove</p>
+            </div>
+          )}
 
           <div className="flex gap-1.5 flex-wrap mb-4">
             <span className="text-[10px] font-bold uppercase text-gray-400 self-center mr-1">Filter:</span>
@@ -847,6 +880,7 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
             {companionFilter.length>0 && <button onClick={()=>setCompanionFilter([])} className="text-[10px] text-gray-400 underline self-center">clear</button>}
           </div>
 
+          {!monthLeaveAV[String(date)] && (<>
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
             <div className="px-4 py-2.5 bg-teal-50 border-b border-teal-100 text-xs font-bold text-teal-700 uppercase">Planned Today ({plannedToday.length})</div>
             {plannedToday.length===0 && <div className="text-center py-8 text-gray-300 text-sm">No doctors planned for this date</div>}
@@ -897,6 +931,7 @@ function ActualVisitsTab({doctors, tourplan, actual, month, setMonth, onToggleAc
           {addOpen && <MultiSelectPicker doctors={doctors} title="➕ Log Unplanned Visits"
             onConfirm={(ids)=>{ ids.forEach(id=>onToggleActual(id,date,true)); }}
             onClose={()=>setAddOpen(false)}/>}
+          </>)}{/* end !monthLeaveAV */}
         </div>
       )}
 
@@ -1791,9 +1826,9 @@ function ReportsTab({doctors, bizplan, bizFieldDefs, crmplan}) {
 function App() {
   const [data, setData]       = useState({doctors:[], bizplan:{}, bizFieldDefs:[], crmplan:{}});
   const [usersData, setUsersData] = useState({
-    amit:  {tourplan:{}, actual:{}},
-    nitu:  {tourplan:{}, actual:{}},
-    nihit: {tourplan:{}, actual:{}},
+    amit:  {tourplan:{}, actual:{}, leave:{}},
+    nitu:  {tourplan:{}, actual:{}, leave:{}},
+    nihit: {tourplan:{}, actual:{}, leave:{}},
   });
   const [loaded, setLoaded]   = useState(false);
   const [syncSt, setSyncSt]   = useState("connecting");
@@ -1819,6 +1854,7 @@ function App() {
   const availableCompanions = USER_COMPANIONS[currentUserId] || USER_COMPANIONS.amit;
   const currentTP           = ((usersData[currentUserId])||{}).tourplan || {};
   const currentActual       = ((usersData[currentUserId])||{}).actual   || {};
+  const currentLeave        = ((usersData[currentUserId])||{}).leave    || {};
 
   useEffect(function() {
     var ref = DB.ref(DB_PATH);
@@ -1849,7 +1885,7 @@ function App() {
           var rawUsers = toObj(raw.users);
           function getUD(uid2) {
             var u = rawUsers[uid2] || {};
-            return { tourplan: toObj(u.tourplan), actual: toObj(u.actual) };
+            return { tourplan: toObj(u.tourplan), actual: toObj(u.actual), leave: toObj(u.leave) };
           }
           var amitUD = getUD("amit");
           var hasAmitTP = Object.keys(amitUD.tourplan).length > 0;
@@ -2033,6 +2069,20 @@ function App() {
     saveMulti(u);
   };
 
+  var toggleLeave = function(month, day, targetUserId) {
+    var uid2 = targetUserId || currentUserId;
+    var lv = JSON.parse(JSON.stringify(((usersData[uid2])||{}).leave || {}));
+    if (!lv[month]) lv[month] = {};
+    if (lv[month][day]) {
+      delete lv[month][day];
+    } else {
+      lv[month][day] = true;
+    }
+    var u = {}; u["alderma/v1/users/"+uid2+"/leave"] = lv;
+    saveMulti(u);
+    notify(lv[month] && lv[month][day] ? "🏖️ Marked as Leave" : "Leave removed");
+  };
+
   var saveBizEntry = function(docId, form) {
     var updates = {};
     updates["alderma/v1/bizplan/"+bpMonth+"/"+docId] = form;
@@ -2158,8 +2208,8 @@ function App() {
 
       <div className="max-w-6xl mx-auto px-4 py-5 w-full" style={{flex:"1 1 0",overflowY:"auto",overflowX:"hidden",boxSizing:"border-box"}}>
         {tab==="doctors"  && <DoctorMasterTab doctors={data.doctors} isAdmin={isAdmin} onSave={saveDoctors} notify={notify} ask={ask}/>}
-        {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={currentTP} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan} onAddDoctorsToTP={addDoctorsToTP} onRemoveDoctorFromTP={removeDoctorFromTP} onSetTPCompanions={setTPCompanions} availableCompanions={availableCompanions}/>}
-        {tab==="actual"   && <ActualVisitsTab doctors={data.doctors} tourplan={currentTP} actual={currentActual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"} availableCompanions={availableCompanions}/>}
+        {tab==="tourplan" && <TourPlanTab doctors={data.doctors} tourplan={currentTP} month={tpMonth} setMonth={setTpMonth} onToggle={toggleTourplan} onAddDoctorsToTP={addDoctorsToTP} onRemoveDoctorFromTP={removeDoctorFromTP} onSetTPCompanions={setTPCompanions} availableCompanions={availableCompanions} leave={currentLeave} onToggleLeave={toggleLeave}/>}
+        {tab==="actual"   && <ActualVisitsTab doctors={data.doctors} tourplan={currentTP} actual={currentActual} month={avMonth} setMonth={setAvMonth} onToggleActual={toggleActual} onSetCompanions={setCompanions} onClearPlan={clearPlan} mode={isAdmin?"admin":"rep"} availableCompanions={availableCompanions} leave={currentLeave} onToggleLeave={toggleLeave}/>}
         {tab==="bizplan"  && <BusinessPlanTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} month={bpMonth} setMonth={setBpMonth} onSaveEntry={saveBizEntry} onAddField={addBizField} isAdmin={isAdmin} notify={notify}/>}
         {tab==="crmplan"  && <CrmPlanTab doctors={data.doctors} crmplan={data.crmplan} month={cpMonth} setMonth={setCpMonth} onSave={saveCrm} onSavePriority={saveDoctorPriority} notify={notify} ask={ask}/>}
         {tab==="reports"  && <ReportsTab doctors={data.doctors} bizplan={data.bizplan} bizFieldDefs={data.bizFieldDefs} crmplan={data.crmplan}/>}
